@@ -1,0 +1,12 @@
+{
+  "name": "polymer-glass-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "在浏览器里看聚合物的玻璃化转变 — Kremer–Grest 珠簧模型 + Three.js 实时分子动力学玩具",
+  "type": "module",
+  "scripts": {
+    "sanity": "node tools/sanity.mjs",
+    "serve": "python -m http.server 8000"
+  },
+  "license": "MIT"
+}
