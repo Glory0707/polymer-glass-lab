@@ -158,7 +158,9 @@ function refreshFit() {
     state.peLo = peLo - pad;
     state.peHi = peHi + pad;
   }
-  $('chipTg').textContent = state.fit ? `Tg ≈ ${state.fit.Tg.toFixed(2)}` : 'Tg —';
+  const vTg = $('vTg');
+  vTg.textContent = state.fit ? '≈ ' + state.fit.Tg.toFixed(2) : '—';
+  vTg.style.color = state.fit ? 'var(--amber)' : '';
 }
 
 /** 画热历史图的拟合线段端点（拟合在对数空间，端点换算回 MSD 值） */
@@ -280,6 +282,7 @@ function frame(now) {
 }
 
 function peTicks() {
+  if (!state.history.length) return [];
   const { peLo, peHi } = state;
   if (!isFinite(peLo) || !isFinite(peHi) || peHi <= peLo) return [];
   const mid = (peLo + peHi) / 2;
@@ -288,11 +291,15 @@ function peTicks() {
 
 function updateStats() {
   const sim = state.sim;
-  $('chipT').textContent = `T ${sim.T.toFixed(2)} (${sim.keTemp.toFixed(2)})`;
-  $('chipPE').textContent = `PE ${sim.pePerBead.toFixed(2)} ε/珠`;
+  const vT = $('vT');
+  vT.textContent = sim.T.toFixed(2);
+  vT.style.color = tColorCss(sim.T);
+  $('vTmeas').textContent = `(${sim.keTemp.toFixed(2)})`;
+  $('vPE').textContent = sim.pePerBead.toFixed(2);
   const lastMsd = state.msdPts.length ? state.msdPts[state.msdPts.length - 1][1] : NaN;
-  $('chipMSD').textContent = `MSD ${isFinite(lastMsd) ? lastMsd.toFixed(2) : '—'} σ²`;
-  $('chipPerf').textContent = `τ ${sim.time.toFixed(0)} · ${state.perf.fps.toFixed(0)} fps`;
+  $('vMSD').textContent = isFinite(lastMsd) ? lastMsd.toFixed(2) : '—';
+  $('vTau').textContent = sim.time.toFixed(0);
+  $('vFps').textContent = Math.round(state.perf.fps) + 'fps';
 }
 
 function showFatal(err) {
@@ -343,7 +350,7 @@ function bindUI() {
   const pauseBtn = $('btnPause');
   pauseBtn.addEventListener('click', () => {
     state.paused = !state.paused;
-    pauseBtn.textContent = state.paused ? '▶ 继续' : '⏸ 暂停';
+    pauseBtn.textContent = state.paused ? '继续' : '暂停';
   });
 
   $('speedSlider').addEventListener('input', (e) => {

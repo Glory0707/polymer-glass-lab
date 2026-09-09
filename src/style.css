@@ -1,228 +1,285 @@
+/* 玻璃化转变 · 仪器面板风格
+   黑色画布 + 等宽遥测读数 + 发丝线分区，无卡片、无阴影、无圆角滥用 */
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('./fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('./fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --bg: #0b0e14;
-  --panel: #121722;
-  --panel2: #171d2b;
-  --line: #232b3d;
-  --text: #dbe2f0;
-  --dim: #8b93a7;
-  --accent: #4cc9f0;
-  --hot: #ff7b54;
+  --void: #0c0d10;
+  --panel: #121316;
+  --line: #212226;
+  --line-strong: #33353b;
+  --text: #dedcd4;
+  --mid: #a5a29a;
+  --dim: #7c7a72;
+  --faint: #55534d;
+  --amber: #d9a441;
+  --red: #e06c5a;
+  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--void);
   color: var(--text);
-  font: 14px/1.5 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 13px/1.55 var(--mono), 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app { display: flex; width: 100%; height: 100%; }
 
-/* ---- 3D 视口 ---- */
+/* ---- 视口 ---- */
 #viewport { position: relative; flex: 1; min-width: 0; }
 #viewport canvas { display: block; }
 
-#chips {
-  position: absolute; top: 10px; left: 10px;
-  display: flex; flex-wrap: wrap; gap: 6px;
+/* 遥测读数：定宽列，无底框 */
+#readout {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; gap: 26px;
+  padding: 12px 16px 10px;
+  background: linear-gradient(rgba(12, 13, 16, 0.82), rgba(12, 13, 16, 0));
   pointer-events: none;
 }
-.chip {
-  background: rgba(16, 21, 32, 0.82);
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  padding: 3px 12px;
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  backdrop-filter: blur(4px);
+#readout .r { display: flex; align-items: baseline; gap: 7px; }
+#readout i {
+  font-style: normal; font-size: 10px; letter-spacing: 0.18em;
+  color: var(--faint); text-transform: uppercase;
 }
-.chip.accent { border-color: rgba(255, 123, 123, 0.55); color: #ffb3b3; }
-.chip.dim { opacity: 0.75; }
+#readout b { font-weight: 600; font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
+#readout em { font-style: normal; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#readout .r:last-child { margin-left: auto; }
 
 #intro {
-  position: absolute; left: 12px; bottom: 12px;
-  max-width: 420px;
-  background: rgba(16, 21, 32, 0.88);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px 14px;
-  font-size: 12.5px;
-  color: var(--dim);
-  backdrop-filter: blur(6px);
-  transition: opacity 1.2s;
-  cursor: pointer;
+  position: absolute; left: 16px; bottom: 14px;
+  font-size: 11.5px; color: var(--dim);
+  background: rgba(12, 13, 16, 0.78);
+  padding: 6px 10px;
+  border-left: 2px solid var(--amber);
+  transition: opacity 1.4s;
+  cursor: default;
+  max-width: 78%;
 }
-#intro b { color: var(--text); }
-#intro p { margin: 4px 0 0; }
 #intro.gone { opacity: 0; pointer-events: none; }
 
 #anneal {
   position: absolute; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(16, 21, 32, 0.92);
+  font-size: 12px; letter-spacing: 0.1em;
+  color: var(--mid);
+  background: rgba(12, 13, 16, 0.88);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px 22px;
-  font-size: 14px;
-  color: var(--text);
-  backdrop-filter: blur(6px);
+  padding: 12px 20px;
 }
-#annealPct { color: var(--accent); font-weight: 600; }
-.lg-blue { color: #5aa2ff; font-weight: 600; }
-.lg-red { color: #ff7b54; font-weight: 600; }
+#anneal span { color: var(--amber); font-weight: 600; }
 
 #panelToggle {
   position: absolute; top: 10px; right: 10px;
   display: none;
-  background: rgba(16, 21, 32, 0.85);
-  color: var(--text);
+  background: rgba(12, 13, 16, 0.85);
+  color: var(--mid);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 16px;
-  padding: 4px 10px;
+  padding: 7px 9px 5px;
   cursor: pointer;
 }
+#panelToggle:hover { color: var(--text); border-color: var(--line-strong); }
 
-/* ---- 右侧面板 ---- */
+/* ---- 面板 ---- */
 #panel {
-  width: 380px;
+  width: 340px;
   flex: none;
   background: var(--panel);
   border-left: 1px solid var(--line);
   overflow-y: auto;
-  padding: 14px 16px 10px;
+  padding: 0 18px 8px;
   scrollbar-width: thin;
-  scrollbar-color: #2a3348 transparent;
+  scrollbar-color: #2a2b30 transparent;
 }
-#panel h1 { font-size: 16.5px; margin: 2px 0 2px; letter-spacing: 0.3px; }
-#panel .sub { color: var(--dim); font-size: 12px; margin: 0 0 10px; }
+#panel::-webkit-scrollbar { width: 6px; }
+#panel::-webkit-scrollbar-thumb { background: #2a2b30; }
+
+#head { padding: 18px 0 14px; }
+#head h1 {
+  margin: 0;
+  font-size: 17px; font-weight: 600; letter-spacing: 0.06em;
+}
+#head .sub {
+  margin: 4px 0 0;
+  font-size: 9px; letter-spacing: 0.22em;
+  color: var(--faint);
+}
 
 section {
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  border-top: 1px solid var(--line);
+  padding: 13px 0 15px;
 }
 section h2 {
-  font-size: 13px; margin: 0 0 8px;
-  color: #c7d2e8; font-weight: 600;
-  display: flex; align-items: baseline; gap: 6px;
+  margin: 0 0 10px;
+  font-size: 11px; font-weight: 400;
+  letter-spacing: 0.3em;
+  color: var(--dim);
+  display: flex; align-items: baseline; gap: 8px;
 }
-.unit { color: var(--dim); font-size: 11px; font-weight: 400; }
-.val { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
-.mono { font-family: ui-monospace, Consolas, monospace; }
+section h2 em {
+  font-style: normal; font-weight: 600; font-size: 14px;
+  letter-spacing: 0; color: var(--amber);
+  margin-left: auto; font-variant-numeric: tabular-nums;
+}
+section h2 span.unit,
+.unit { font-size: 10px; color: var(--faint); letter-spacing: 0.05em; }
 
-.row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; }
-.row.btns { gap: 6px; }
-.row .grow { flex: 1; }
-label { font-size: 12.5px; color: var(--dim); display: flex; align-items: center; gap: 6px; }
-label.chk { gap: 4px; cursor: pointer; }
-label.chk input { accent-color: var(--accent); }
+.row2 { display: flex; align-items: center; gap: 10px; margin: 9px 0 2px; }
+.row2 .spacer, .spacer { flex: 1; }
+.kv { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 0; }
+.kv output { margin-left: auto; }
+label { font-size: 12px; color: var(--mid); display: flex; align-items: center; gap: 7px; }
+label.chk { gap: 4px; cursor: pointer; color: var(--dim); }
+label.chk input { accent-color: var(--amber); }
 
+/* 滑杆：细轨 + 方形游标 */
 input[type="range"] {
-  width: 100%; height: 22px;
-  accent-color: var(--accent);
-  cursor: pointer;
-  margin: 2px 0;
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 18px;
+  background: transparent; cursor: pointer;
+  margin: 4px 0 2px;
 }
-#tempSlider { accent-color: var(--hot); }
-
-button {
-  background: #1d2536;
-  color: var(--text);
-  border: 1px solid #2c3650;
-  border-radius: 8px;
-  padding: 5px 10px;
-  font-size: 12.5px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: #2c2d33; }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 9px; height: 15px; margin-top: -6.5px;
+  background: var(--text); border: none;
 }
-button:hover { background: #26304a; border-color: #3a4670; }
-button:active { transform: translateY(1px); }
+input[type="range"]:hover::-webkit-slider-thumb { background: #fff; }
+input[type="range"]::-moz-range-track { height: 2px; background: #2c2d33; }
+input[type="range"]::-moz-range-thumb {
+  width: 9px; height: 15px; border: none; border-radius: 0; background: var(--text);
+}
+/* 温度滑杆的轨道即色标 */
+#tempSlider::-webkit-slider-runnable-track {
+  height: 3px;
+  background: linear-gradient(90deg, #3d6db3, #58a07c, #d9a441, #c8502e);
+}
+#tempSlider::-webkit-slider-thumb { margin-top: -6px; width: 8px; height: 15px; }
+#tempSlider::-moz-range-track {
+  height: 3px;
+  background: linear-gradient(90deg, #3d6db3, #58a07c, #d9a441, #c8502e);
+}
 
-.seg { display: flex; gap: 0; width: 100%; }
+/* 分段选择 */
+.seg { display: flex; margin: 8px 0 4px; }
 .seg button {
   flex: 1;
-  border-radius: 0;
+  background: transparent; color: var(--dim);
+  border: 1px solid var(--line);
   margin-left: -1px;
+  padding: 6px 0;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
 }
-.seg button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
-.seg button:last-child { border-radius: 0 8px 8px 0; }
+.seg button:first-child { margin-left: 0; }
+.seg button:hover { color: var(--text); position: relative; z-index: 1; }
 .seg button.active {
-  background: #24425e;
-  border-color: var(--accent);
-  color: #bfeaff;
+  color: var(--amber);
+  border-color: var(--line-strong);
+  background: #191a1e;
+  position: relative; z-index: 2;
 }
 
+button {
+  background: transparent;
+  color: var(--mid);
+  border: 1px solid var(--line);
+  padding: 5px 11px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+button:hover { color: var(--text); border-color: var(--line-strong); background: #191a1e; }
+button:active { background: #1f2025; }
+
+output { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.mono { font-variant-numeric: tabular-nums; }
 select {
-  background: #1d2536;
-  color: var(--text);
-  border: 1px solid #2c3650;
-  border-radius: 8px;
-  padding: 4px 6px;
-  font-size: 12.5px;
+  background: #17181c; color: var(--text);
+  border: 1px solid var(--line);
+  padding: 3px 4px;
+  font-size: 12px; font-family: inherit;
 }
 
+/* 图表 */
 canvas#msdPlot, canvas#histPlot {
-  width: 100%;
-  height: 235px;
+  width: 100%; height: 225px;
   display: block;
-  border-radius: 8px;
+  border: 1px solid var(--line);
 }
-canvas#histPlot { height: 225px; }
+canvas#histPlot { height: 215px; }
 
-.hint { color: var(--dim); font-size: 11.5px; margin: 6px 0 0; }
-.hint b { color: #c7d2e8; }
+.hint {
+  color: var(--faint); font-size: 11px;
+  line-height: 1.65;
+  margin: 8px 0 0;
+}
 
 details {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  background: var(--panel2);
+  border-top: 1px solid var(--line);
+  padding: 12px 0 6px;
 }
-details summary { cursor: pointer; font-size: 13px; color: #c7d2e8; }
-details .doc { font-size: 12px; color: var(--dim); }
-details .doc p { margin: 8px 0; }
-.dim { opacity: 0.8; }
+details summary {
+  cursor: pointer;
+  font-size: 11px; letter-spacing: 0.3em;
+  color: var(--dim);
+}
+details[open] summary { margin-bottom: 8px; }
+details p { font-size: 12px; color: var(--mid); margin: 8px 0; line-height: 1.75; }
+.dim { color: var(--faint); }
 
 footer {
-  display: flex;
-  justify-content: space-between;
-  color: var(--dim);
-  font-size: 11.5px;
-  padding: 2px 2px 10px;
+  display: flex; justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding: 12px 0 10px;
+  font-size: 10.5px; color: var(--faint);
+  letter-spacing: 0.06em;
 }
-footer a { color: var(--accent); text-decoration: none; }
-footer a:hover { text-decoration: underline; }
+footer a { color: var(--dim); text-decoration: none; border-bottom: 1px solid var(--line-strong); }
+footer a:hover { color: var(--amber); border-color: var(--amber); }
 
 #fatal {
   position: fixed; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(8, 10, 16, 0.9);
-  color: #ffb3b3;
-  font-size: 15px;
+  background: rgba(12, 13, 16, 0.92);
+  color: var(--red);
+  font-size: 13px;
   z-index: 99;
 }
 #fatal[hidden] { display: none; }
 
-/* ---- 移动端 ---- */
+/* ---- 窄屏 ---- */
 @media (max-width: 860px) {
   #panel {
     position: fixed;
     top: 0; right: 0;
     height: 100%;
-    width: min(380px, 92vw);
+    width: min(340px, 92vw);
     transform: translateX(100%);
     transition: transform 0.25s ease;
     z-index: 10;
-    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.5);
   }
   #panel.open { transform: translateX(0); }
   #panelToggle { display: block; }
-  #intro { max-width: 75%; }
+  #readout { gap: 16px; }
 }

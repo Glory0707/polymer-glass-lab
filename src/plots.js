@@ -23,10 +23,10 @@ function prep(canvas) {
 }
 
 function grid(ctx, m, w, h, xTicks, yTicks, X, Y) {
-  ctx.strokeStyle = '#1d2432';
+  ctx.strokeStyle = '#202127';
   ctx.lineWidth = 1;
-  ctx.fillStyle = '#77809a';
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#6f6d66';
+  ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'center';
   for (const [v, label] of xTicks) {
     const x = X(v);
@@ -101,13 +101,13 @@ export function drawMSDPlot(canvas, ghosts, active) {
     }
     if (anchor) {
       const A = anchor[1] / anchor[0];
-      ctx.strokeStyle = 'rgba(150,160,180,0.35)';
+      ctx.strokeStyle = 'rgba(165,162,154,0.38)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       poly(ctx, [[0.15, A * 0.15], [maxTau * 1.3, A * maxTau * 1.3]], X, Y);
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(150,160,180,0.7)';
-      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(165,162,154,0.75)';
+      ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
       ctx.textAlign = 'left';
       ctx.fillText('斜率1（扩散）', X(maxTau * 1.3) - 78, Y(A * maxTau * 1.3) - 6);
     }
@@ -133,8 +133,8 @@ export function drawMSDPlot(canvas, ghosts, active) {
   }
   ctx.restore();
 
-  ctx.fillStyle = '#9aa3b8';
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#8a887f';
+  ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'left';
   ctx.fillText('MSD / σ²', m.l + 6, m.t + 2);
   ctx.textAlign = 'right';
@@ -142,7 +142,7 @@ export function drawMSDPlot(canvas, ghosts, active) {
   if (active) {
     ctx.textAlign = 'right';
     ctx.fillStyle = tColorCss(active.T, 1);
-    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.font = 'bold 11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
     ctx.fillText(`T = ${active.T.toFixed(2)}`, w - m.r - 4, m.t + 12);
   }
 }
@@ -173,10 +173,10 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
   const Ype = (pe) => m.t + (1 - (pe - peLo) / (peHi - peLo || 1)) * ph;
 
   // 网格
-  ctx.strokeStyle = '#1d2432';
+  ctx.strokeStyle = '#202127';
   ctx.lineWidth = 1;
-  ctx.fillStyle = '#77809a';
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#6f6d66';
+  ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'center';
   for (let T = 0.2; T <= 1.41; T += 0.2) {
     const x = X(T);
@@ -196,7 +196,7 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 
   // 势能（右轴，DSC 类比）
   if (opts.hasData) {
-    ctx.strokeStyle = 'rgba(255,180,84,0.85)';
+    ctx.strokeStyle = 'rgba(217,164,65,0.85)';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     let started = false;
@@ -210,7 +210,7 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 
   // 原始样本散点
   if (opts.raw) {
-    ctx.fillStyle = 'rgba(190,200,220,0.18)';
+    ctx.fillStyle = 'rgba(200,197,188,0.20)';
     for (const s of opts.raw) {
       ctx.fillRect(X(s.T) - 1, Y(s.msd) - 1, 2, 2);
     }
@@ -218,7 +218,7 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 
   // 分箱均值线
   if (bins.length > 1) {
-    ctx.strokeStyle = '#e8ecf4';
+    ctx.strokeStyle = '#dedcd4';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(X(bins[0].T), Y(bins[0].msd));
@@ -228,7 +228,7 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 
   // 两段式拟合 + Tg 标注
   if (fit) {
-    ctx.strokeStyle = 'rgba(150,160,180,0.5)';
+    ctx.strokeStyle = 'rgba(165,162,154,0.5)';
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 4]);
     for (const seg of [fit.seg1, fit.seg2]) {
@@ -238,33 +238,33 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
       ctx.stroke();
     }
     ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(255,93,93,0.9)';
+    ctx.strokeStyle = 'rgba(224,108,90,0.9)';
     ctx.beginPath();
     ctx.moveTo(X(fit.Tg), m.t);
     ctx.lineTo(X(fit.Tg), m.t + ph);
     ctx.stroke();
-    ctx.fillStyle = '#ff7b7b';
-    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.fillStyle = '#e88a7a';
+    ctx.font = 'bold 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
     ctx.textAlign = fit.Tg > 1.1 ? 'right' : 'left';
     ctx.fillText(`Tg ≈ ${fit.Tg.toFixed(2)}`, X(fit.Tg) + (fit.Tg > 1.1 ? -6 : 6), m.t + 14);
   } else if (!opts.hasData) {
-    ctx.fillStyle = '#5b6478';
-    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillStyle = '#5b594f';
+    ctx.font = '12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.fillText('按「降温」扫一遍温度，拐点即 Tg', m.l + pw / 2, m.t + ph / 2);
   }
 
   // 轴标 + 图例
-  ctx.fillStyle = '#9aa3b8';
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#8a887f';
+  ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'left';
   ctx.fillText('MSD@20τ', m.l + 6, m.t + 2);
   ctx.textAlign = 'right';
   ctx.fillText('T', w - m.r + 8, h - m.b + 14);
-  ctx.fillStyle = 'rgba(255,180,84,0.9)';
+  ctx.fillStyle = 'rgba(217,164,65,0.9)';
   ctx.fillText('势能/珠 →', w - m.r + 8, m.t + 8);
   if (opts.peTicks) {
-    ctx.fillStyle = 'rgba(255,180,84,0.75)';
+    ctx.fillStyle = 'rgba(217,164,65,0.75)';
     for (const [v, label] of opts.peTicks) {
       ctx.fillText(label, w - m.r + 8, Ype(v) + 3);
     }

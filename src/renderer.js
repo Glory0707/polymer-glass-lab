@@ -14,8 +14,8 @@ export class GlassRenderer {
     this.sim = sim;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0b0e14);
-    this.scene.fog = new THREE.Fog(0x0b0e14, 0, 0); // far 在 _fitCamera 里设
+    this.scene.background = new THREE.Color(0x0c0d10);
+    this.scene.fog = new THREE.Fog(0x0c0d10, 0, 0); // far 在 _fitCamera 里设
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
 
@@ -61,16 +61,14 @@ export class GlassRenderer {
     this.beadMesh = mesh;
     this.scene.add(mesh);
 
-    // 键线（含跨周期边界的镜像补画）
+    // 键线（含跨周期边界的镜像补画）：中性灰弱化存在感，让珠色独占数据表达
     const nb = sim.bondPairs.length / 2;
     this.bondPos = new Float32Array(nb * 6);
-    this.bondCol = new Float32Array(nb * 6);
     const bgeo = new THREE.BufferGeometry();
     bgeo.setAttribute('position', new THREE.BufferAttribute(this.bondPos, 3));
-    bgeo.setAttribute('color', new THREE.BufferAttribute(this.bondCol, 3));
     this.bondLines = new THREE.LineSegments(
       bgeo,
-      new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.45 })
+      new THREE.LineBasicMaterial({ color: 0x52545a, transparent: true, opacity: 0.28 })
     );
     this.bondLines.frustumCulled = false;
     this.scene.add(this.bondLines);
@@ -80,7 +78,7 @@ export class GlassRenderer {
     const edges = new THREE.EdgesGeometry(boxGeo);
     this.boxHelper = new THREE.LineSegments(
       edges,
-      new THREE.LineBasicMaterial({ color: 0x39435a, transparent: true, opacity: 0.8 })
+      new THREE.LineBasicMaterial({ color: 0x2e3138, transparent: true, opacity: 0.8 })
     );
     this.boxHelper.frustumCulled = false;
     this.scene.add(this.boxHelper);
@@ -118,9 +116,8 @@ export class GlassRenderer {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 
     if (opts.showBonds) {
-      const arr = this.bondPos, col = this.bondCol;
+      const arr = this.bondPos;
       const bp = sim.bondPairs;
-      const ct = mesh.instanceColor ? mesh.instanceColor.array : null;
       const { Lx, Ly, Lz } = sim;
       for (let b = 0, w = 0; b < bp.length; b += 2, w += 6) {
         const i3 = bp[b] * 3, j3 = bp[b + 1] * 3;
@@ -136,16 +133,8 @@ export class GlassRenderer {
         arr[w + 3] = p[j3] + sx;
         arr[w + 4] = p[j3 + 1] + sy;
         arr[w + 5] = p[j3 + 2] + sz;
-        if (ct) {
-          const r = (ct[i3] + ct[j3]) * 0.5;
-          const g = (ct[i3 + 1] + ct[j3 + 1]) * 0.5;
-          const b2 = (ct[i3 + 2] + ct[j3 + 2]) * 0.5;
-          col[w] = r; col[w + 1] = g; col[w + 2] = b2;
-          col[w + 3] = r; col[w + 4] = g; col[w + 5] = b2;
-        }
       }
       this.bondLines.geometry.attributes.position.needsUpdate = true;
-      this.bondLines.geometry.attributes.color.needsUpdate = true;
       this.bondLines.visible = true;
     } else {
       this.bondLines.visible = false;
