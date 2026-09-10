@@ -186,7 +186,7 @@ export class GlassRenderer {
     const radius = 0.5 * Math.hypot(sim.Lx, sim.Ly, sim.Lz);
     const fovY = (this.camera.fov * Math.PI) / 180;
     const fovX = 2 * Math.atan(Math.tan(fovY / 2) * this.camera.aspect);
-    const dist = (radius / Math.sin(Math.min(fovY, fovX) / 2)) * 1.22;
+    const dist = (radius / Math.sin(Math.min(fovY, fovX) / 2)) * 1.04;
     const dir = this.camera.position.clone().sub(this.controls.target);
     if (dir.lengthSq() < 1e-6) dir.set(0.85, 0.6, 1.25);
     dir.normalize();
