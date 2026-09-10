@@ -6,10 +6,10 @@
  *   main → worker: {cmd:'init'|'rebuild'|'temp'|'archive'|'mode'|'rate'|'speed'|'pause'
  *                   |'stiffness'|'npt'|'density-target'|'deform'|'deform-release'
  *                   |'protocol'|'protocol-stop'}
- *   worker → main: {type:'ready'|'anneal'|'frame'|'samples'|'proto-done'|'fatal'}
+ *   worker → main: {type:'ready'|'anneal'|'anneal-done'|'frame'|'samples'|'proto-done'|'fatal'}
  */
-import { KGSim } from './md.js?v=22';
-import { binByT, twoSegmentFit } from './analysis.js?v=22';
+import { KGSim } from './md.js?v=23';
+import { binByT, twoSegmentFit } from './analysis.js?v=23';
 
 let sim = null;
 const cfg = {
@@ -118,7 +118,7 @@ function tick() {
     sim.anneal(chunk);
     annealLeft -= chunk;
     post({ type: 'anneal', pct: Math.min(1, 1 - annealLeft / 4000) });
-    if (annealLeft <= 0) { archive(); post({ type: 'ready' }); }
+    if (annealLeft <= 0) { archive(); post({ type: 'anneal-done' }); }
     return;
   }
 
