@@ -109,7 +109,7 @@ body {
 }
 /* ---- 右上 HUD 读数 ---- */
 #readout {
-  position: fixed; top: 96px; right: 44px;
+  position: fixed; top: 96px; right: 26px;
   text-align: right;
   z-index: 5;
   pointer-events: none;
@@ -124,7 +124,10 @@ body {
 #heroT .unit { font-size: 10px; color: var(--dim); letter-spacing: 0.08em; margin-left: 7px; }
 #heroT .unit em { font-style: normal; color: var(--faint); margin-left: 5px; }
 #readout .r {
-  display: flex; justify-content: flex-end; align-items: baseline; gap: 14px;
+  display: grid;
+  grid-template-columns: 30px 1fr 46px;
+  gap: 12px;
+  align-items: baseline;
   padding: 5px 0;
 }
 #readout .r + .r { border-top: 1px solid rgba(255, 255, 255, 0.07); }
@@ -133,8 +136,8 @@ body {
   color: var(--faint); text-transform: uppercase;
   width: 34px; text-align: left; flex: none;
 }
-#readout .r b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 74px; text-align: right; }
-#readout .r span { font-size: 10px; color: var(--faint); }
+#readout .r b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+#readout .r > span { font-size: 10px; color: var(--faint); text-align: left; }
 #readout .dim b, #readout .dim span { color: var(--faint); font-size: 11.5px; }
 
 /* ---- 左下控制簇 ---- */
