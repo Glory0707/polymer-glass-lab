@@ -41,6 +41,7 @@ export class GlassRenderer {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
+    this.controls.enablePan = false;
     this.controls.target.copy(this._center);
     // 空闲自转：页面永远是活的；用户一上手就停，放开 6 秒后恢复
     this.controls.autoRotate = true;
@@ -189,6 +190,7 @@ export class GlassRenderer {
     const dir = this.camera.position.clone().sub(this.controls.target);
     if (dir.lengthSq() < 1e-6) dir.set(0.85, 0.6, 1.25);
     dir.normalize();
+    this.controls.target.set(sim.Lx / 2, sim.Ly / 2, sim.Lz / 2);
     this.camera.position.copy(this.controls.target).add(dir.multiplyScalar(dist));
   }
 
