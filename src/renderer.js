@@ -19,10 +19,10 @@ export class GlassRenderer {
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
 
-    const hemi = new THREE.HemisphereLight(0x99b7ff, 0x1a2030, 1.1);
+    const hemi = new THREE.HemisphereLight(0x99b7ff, 0x1a2030, 1.25);
     this.scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
-    const fill = new THREE.DirectionalLight(0x88aaff, 0.7);
+    const key = new THREE.DirectionalLight(0xfff4e0, 2.6);
+    const fill = new THREE.DirectionalLight(0x88aaff, 0.8);
     this.scene.add(key, fill);
     this._key = key; this._fill = fill;
 
@@ -42,6 +42,18 @@ export class GlassRenderer {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
     this.controls.target.copy(this._center);
+    // 空闲自转：页面永远是活的；用户一上手就停，放开 6 秒后恢复
+    this.controls.autoRotate = true;
+    this.controls.autoRotateSpeed = 0.45;
+    this._idleTimer = null;
+    this.controls.addEventListener('start', () => {
+      this.controls.autoRotate = false;
+      clearTimeout(this._idleTimer);
+    });
+    this.controls.addEventListener('end', () => {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = setTimeout(() => { this.controls.autoRotate = true; }, 6000);
+    });
 
     this._resize();
     this._ro = new ResizeObserver(() => this._resize());
@@ -53,7 +65,7 @@ export class GlassRenderer {
 
   _buildSimObjects(sim) {
     const geo = new THREE.SphereGeometry(BEAD_R, 14, 10);
-    const mat = new THREE.MeshLambertMaterial();
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.38, metalness: 0.06 });
     const mesh = new THREE.InstancedMesh(geo, mat, sim.N);
     mesh.frustumCulled = false;
     const white = new THREE.Color(0xffffff);
@@ -168,6 +180,7 @@ export class GlassRenderer {
 
   dispose() {
     this._ro.disconnect();
+    clearTimeout(this._idleTimer);
     this.controls.dispose();
     this.scene.traverse((o) => {
       if (o.geometry) o.geometry.dispose();

@@ -3,7 +3,7 @@
  *  1) MSD–τ 双对数曲线（当前温度实时 + 历史温度幽灵曲线 + 扩散参考线）
  *  2) 热历史图：固定滞后窗口 MSD 与每珠势能 vs 温度，两段式拟合标注 Tg
  */
-import { tColorCss } from './analysis.js?v=4';
+import { tColorCss } from './analysis.js?v=5';
 
 function prep(canvas) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -128,7 +128,7 @@ export function drawMSDPlot(canvas, ghosts, active) {
     const last = active.pts[active.pts.length - 1];
     ctx.fillStyle = tColorCss(active.T, 1);
     ctx.beginPath();
-    ctx.arc(X(last[0]), Y(last[1]), 2.6, 0, Math.PI * 2);
+    ctx.arc(X(last[0]), Y(last[1]), 2.4 + Math.sin(performance.now() / 280) * 0.9 + 0.9, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();

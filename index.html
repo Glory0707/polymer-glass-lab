@@ -108,7 +108,11 @@
             <i class="tg" style="left:24%">Tg≈0.4</i>
             <i style="left:65.5%">1.0</i>
           </div>
-          <input type="range" id="tempSlider" min="0.05" max="1.5" step="0.01" value="1.0" aria-label="温度" />
+          <div id="railWrap">
+            <input type="range" id="tempSlider" min="0.05" max="1.5" step="0.01" value="1.0" aria-label="温度" />
+            <div id="railBand" aria-hidden="true"></div>
+            <div id="railBubble">1.00</div>
+          </div>
           <div id="railEnds"><span>0.05</span><span>1.50</span></div>
         </div>
 
@@ -158,6 +162,6 @@
       if (el) { el.textContent = msg; document.getElementById('fatal').hidden = false; }
     }, true);
   </script>
-  <script type="module" src="./src/main.js?v=4"></script>
+  <script type="module" src="./src/main.js?v=5"></script>
 </body>
 </html>

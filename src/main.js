@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=4';
-import { GlassRenderer } from './renderer.js?v=4';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=4';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb } from './analysis.js?v=4';
+import { KGSim } from './md.js?v=5';
+import { GlassRenderer } from './renderer.js?v=5';
+import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=5';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb } from './analysis.js?v=5';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -92,6 +92,11 @@ function syncSliderToSim() {
   const v = $('vT');
   v.textContent = T.toFixed(2);
   v.style.color = tColorCss(T);
+  const b = $('railBubble');
+  if (b) {
+    b.style.left = ((T - 0.05) / 1.45 * 100).toFixed(2) + '%';
+    b.textContent = T.toFixed(2);
+  }
 }
 
 /* ---------------- MSD 曲线采样与幽灵存档 ---------------- */
