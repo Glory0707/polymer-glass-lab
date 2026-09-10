@@ -104,6 +104,10 @@ worker.onmessage = (e) => {
     }
     case 'frame': {
       view.pos = new Float32Array(m.pos);
+      // NaN 防护
+      for (let a = 0; a < view.pos.length; a++) {
+        if (!Number.isFinite(view.pos[a])) view.pos[a] = 0;
+      }
       view.chi = m.chi ? new Float32Array(m.chi) : view.chi;
       view.mob = m.mob ? new Float32Array(m.mob) : view.mob;
       if (m.vhBins) { view.vhBins = new Float32Array(m.vhBins); view.vhMax = m.vhMax; view.vhN = m.vhN; }

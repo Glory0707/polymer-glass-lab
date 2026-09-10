@@ -159,6 +159,10 @@ function tick() {
 
 function pushFrame() {
   const posCopy = sim.pos.slice();
+  // NaN 防护：不发送含 NaN 的位置
+  for (let a = 0; a < posCopy.length; a++) {
+    if (!Number.isFinite(posCopy[a])) { console.error('NaN in pos[' + a + ']'); posCopy[a] = 0; }
+  }
   const u = sim.upos, sm = sim.snapMob;
   const mob = new Float32Array(sim.N);
   let sumD2 = 0;
