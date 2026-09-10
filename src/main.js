@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=15';
-import { GlassRenderer } from './renderer.js?v=15';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=15';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=15';
+import { KGSim } from './md.js?v=16';
+import { GlassRenderer } from './renderer.js?v=16';
+import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=16';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=16';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;

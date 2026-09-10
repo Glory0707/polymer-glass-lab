@@ -190,10 +190,13 @@ body {
 label.chk { color: var(--dim); cursor: pointer; gap: 4px; display: inline-flex; align-items: center; font-size: 12px; }
 label.chk input { accent-color: var(--accent); }
 select {
-  background: rgba(255, 255, 255, 0.06); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 8px;
-  padding: 3px 5px; font-size: 12px; font-family: inherit;
+  width: 132px;
+  background: #161b26; color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: 8px;
+  padding: 4px 8px; font-size: 12px; font-family: inherit;
 }
+select:focus { outline: none; border-color: var(--accent); }
+select option { background: #10141d; color: var(--ink); }
 
 input[type="range"] {
   -webkit-appearance: none; appearance: none;
@@ -362,6 +365,12 @@ input[type="range"]::-moz-range-thumb {
 #paramsPop {
   width: 300px;
   padding: 8px 18px 12px;
+  background: rgba(13, 16, 24, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 #paramsPop .pgroup { padding: 10px 0 8px; }
 #paramsPop .pgroup + .pgroup { border-top: 1px solid var(--line); }
