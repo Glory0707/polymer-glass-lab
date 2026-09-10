@@ -74,6 +74,37 @@ check('扫描趋势：高温 MSD ≫ 低温 MSD', liquidRow.msd > glassRow.msd *
 check('PE 随 T 下降（玻 < 液）', glassRow.pe < liquidRow.pe - 0.2,
   `玻=${glassRow.pe.toFixed(2)} < 液=${liquidRow.pe.toFixed(2)}`);
 
+// 链刚度：数值梯度一致性 + NVE 能量守恒（κ=4）
+sim.stiffness = 4;
+{
+  const h = 1e-3;
+  let worst = 0;
+  for (const j of [100, 233, 350]) {
+    for (let c = 0; c < 3; c++) {
+      const orig = sim.pos[j * 3 + c];
+      sim.pos[j * 3 + c] = orig + h; sim._computeForces();
+      const Up = sim.pePerBead * sim.N;
+      sim.pos[j * 3 + c] = orig - h; sim._computeForces();
+      const Um = sim.pePerBead * sim.N;
+      sim.pos[j * 3 + c] = orig; sim._computeForces();
+      const numeric = -(Up - Um) / (2 * h);
+      const err = Math.abs(sim.force[j * 3 + c] - numeric) / (Math.abs(numeric) + 1);
+      if (err > worst) worst = err;
+    }
+  }
+  check('链刚度弯角力 = −∇U（数值梯度）', worst < 0.02, `最大相对误差 ${worst.toExponential(2)}`);
+}
+const E0 = sim.pePerBead * sim.N + 1.5 * sim.keTemp * sim.N;
+sim.gamma = 0;
+let maxDrift = 0;
+for (let i = 0; i < 2500; i++) {
+  sim.step();
+  const E = sim.pePerBead * sim.N + 1.5 * sim.keTemp * sim.N;
+  maxDrift = Math.max(maxDrift, Math.abs(E - E0) / sim.N);
+}
+sim.gamma = 1;
+check('刚度开启 NVE 能量守恒', maxDrift < 0.05, `最大漂移 ${maxDrift.toFixed(4)} ε/珠`);
+
 const bins = binByT(history, 0.1, 0, 1.6, 1);
 const fit = twoSegmentFit(bins);
 if (fit) {

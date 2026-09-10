@@ -62,6 +62,8 @@ export class KGSim {
     // 链段迁移率着色窗口（默认 625 步 ≈ 5 τ）
     this.mobSteps = opts.mobSteps ?? 625;
     this.T = opts.temperature ?? 1.0;
+    // 链刚度 κ：U_bend = κ(1 - cosφ)，φ 为相邻两键夹角（0 = 柔性，越大越挺直）
+    this.stiffness = opts.stiffness ?? 0;
     this.seed = (opts.seed ?? 20260910) >>> 0;
 
     this.rng = mulberry32(this.seed);
@@ -269,6 +271,34 @@ export class KGSim {
       pe += -0.5 * K_FENE * R02 * Math.log(denom);
     }
 
+    // 弯角势：相邻两键夹角的 cos 型弯曲能（半柔性链）
+    if (this.stiffness > 0) {
+      const k = this.stiffness;
+      for (let i = 0; i < N; i++) {
+        if (i % L === 0 || i % L === L - 1) continue; // 链端无弯角
+        const a3 = (i - 1) * 3, i3 = i * 3, b3 = (i + 1) * 3;
+        let b1x = p[i3] - p[a3];     b1x -= Lx * Math.round(b1x / Lx);
+        let b1y = p[i3 + 1] - p[a3 + 1]; b1y -= Ly * Math.round(b1y / Ly);
+        let b1z = p[i3 + 2] - p[a3 + 2]; b1z -= Lz * Math.round(b1z / Lz);
+        let b2x = p[b3] - p[i3];     b2x -= Lx * Math.round(b2x / Lx);
+        let b2y = p[b3 + 1] - p[i3 + 1]; b2y -= Ly * Math.round(b2y / Ly);
+        let b2z = p[b3 + 2] - p[i3 + 2]; b2z -= Lz * Math.round(b2z / Lz);
+        const inv1 = 1 / Math.sqrt(b1x * b1x + b1y * b1y + b1z * b1z);
+        const inv2 = 1 / Math.sqrt(b2x * b2x + b2y * b2y + b2z * b2z);
+        const n1x = b1x * inv1, n1y = b1y * inv1, n1z = b1z * inv1;
+        const n2x = b2x * inv2, n2y = b2y * inv2, n2z = b2z * inv2;
+        let c = n1x * n2x + n1y * n2y + n1z * n2z;
+        if (c > 1) c = 1; else if (c < -1) c = -1;
+        // dU/db = -κ · ∂cosφ/∂b，∇cosφ 见下
+        const g1x = (n2x - c * n1x) * inv1, g1y = (n2y - c * n1y) * inv1, g1z = (n2z - c * n1z) * inv1;
+        const g2x = (n1x - c * n2x) * inv2, g2y = (n1y - c * n2y) * inv2, g2z = (n1z - c * n2z) * inv2;
+        f[a3] += -k * g1x; f[a3 + 1] += -k * g1y; f[a3 + 2] += -k * g1z;
+        f[i3] += k * (g1x - g2x); f[i3 + 1] += k * (g1y - g2y); f[i3 + 2] += k * (g1z - g2z);
+        f[b3] += k * g2x; f[b3 + 1] += k * g2y; f[b3 + 2] += k * g2z;
+        pe += k * (1 - c);
+      }
+    }
+
     this.pePerBead = pe / N;
   }
 
@@ -379,6 +409,19 @@ export class KGSim {
 
   /** 非折叠坐标快照（配合 msdOver 做自定义窗口的 MSD 测量） */
   snapshotU() { return this.upos.slice(); }
+
+  /** 相对参考点的四阶位移矩 ⟨|Δr|⁴⟩（非高斯参数 α₂ 用） */
+  msd4Ref() {
+    let s = 0;
+    const u = this.upos, r = this.refPos;
+    for (let i = 0; i < this.N; i++) {
+      const i3 = i * 3;
+      const dx = u[i3] - r[i3], dy = u[i3 + 1] - r[i3 + 1], dz = u[i3 + 2] - r[i3 + 2];
+      const d2 = dx * dx + dy * dy + dz * dz;
+      s += d2 * d2;
+    }
+    return s / this.N;
+  }
 
   /** 相对给定快照的均方位移 */
   msdOver(snap) {

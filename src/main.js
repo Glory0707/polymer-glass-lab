@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=16';
-import { GlassRenderer } from './renderer.js?v=16';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=16';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=16';
+import { KGSim } from './md.js?v=17';
+import { GlassRenderer } from './renderer.js?v=17';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot } from './plots.js?v=17';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=17';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -22,6 +22,8 @@ const state = {
   showBonds: true,
   // MSD 曲线
   msdPts: [],
+  a2Pts: [],
+  stiffness: 0,
   ghosts: [],
   nextSampleStep: 8,
   // 热历史
@@ -70,7 +72,9 @@ function rebuild({ newSeed = false, keepT = true } = {}) {
     }
   }
 
+  state.sim.stiffness = state.stiffness;
   state.msdPts = [];
+  state.a2Pts = [];
   state.ghosts = [];
   state.nextSampleStep = 8;
   state.history = [];
@@ -101,9 +105,13 @@ function sampleMSD() {
   const st = sim.stepCount - sim.refStep;
   if (st < state.nextSampleStep) return;
   const tau = st * sim.dt;
-  state.msdPts.push([tau, sim.msdRef()]);
+  const msd = sim.msdRef();
+  const m4 = sim.msd4Ref();
+  const a2 = msd > 1e-9 ? (3 * m4) / (5 * msd * msd) - 1 : 0;
+  state.msdPts.push([tau, msd]);
+  state.a2Pts.push([tau, a2]);
   state.nextSampleStep = Math.max(state.nextSampleStep + 8, Math.ceil(state.nextSampleStep * 1.12));
-  if (state.msdPts.length > 500) state.msdPts.shift();
+  if (state.msdPts.length > 500) { state.msdPts.shift(); state.a2Pts.shift(); }
 }
 
 /** 把当前 MSD 曲线存为幽灵线并重置参考点（换温度时） */
@@ -264,6 +272,7 @@ function frame(now) {
 
     if (frameNo % 2 === 0) {
       drawMSDPlot($('msdPlot'), state.ghosts, { T: state.sim.refT, pts: state.msdPts });
+      drawA2Plot($('a2Plot'), state.a2Pts);
     }
     if (state.fitDirty && frameNo % 45 === 0) {
       refreshFit();
@@ -360,6 +369,14 @@ function bindUI() {
     $('speedVal').textContent = String(state.speed);
   });
 
+  const stiffnessSlider = $('stiffnessSlider');
+  const applyStiffness = (v) => {
+    state.stiffness = v;
+    if (state.sim) state.sim.stiffness = v;
+    $('stiffnessVal').textContent = String(parseFloat(v.toFixed(2)));
+  };
+  stiffnessSlider.addEventListener('input', () => applyStiffness(parseFloat(stiffnessSlider.value)));
+
   $('sizeSel').addEventListener('change', (e) => {
     state.numChains = parseInt(e.target.value, 10);
     rebuild();
@@ -391,6 +408,51 @@ function bindUI() {
       ptoggle.classList.remove('active');
       $('figs').classList.remove('open');
     }
+  });
+
+  const download = (name, text, mime) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: mime }));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  const stamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+
+  $('btnCsv').addEventListener('click', () => {
+    const sim = state.sim;
+    const L = [];
+    L.push('# polymer-glass-lab export');
+    L.push(`# N=${sim.N} chains=${sim.numChains} chainLen=${sim.chainLen} rho=${sim.density} kappa=${sim.stiffness} seed=${sim.seed}`);
+    L.push('');
+    L.push('# msd-tau (current run, refT=' + sim.refT.toFixed(3) + ')');
+    L.push('tau,msd');
+    for (const [t, v] of state.msdPts) L.push(t.toFixed(4) + ',' + v.toPrecision(6));
+    L.push('');
+    L.push('# thermal-history');
+    L.push('T,msd20,pe');
+    for (const s2 of state.history) L.push(s2.T.toFixed(3) + ',' + s2.msd.toPrecision(6) + ',' + s2.pe.toPrecision(6));
+    L.push('');
+    L.push('# nongaussian-a2');
+    L.push('tau,a2');
+    for (const [t, a] of state.a2Pts) L.push(t.toFixed(4) + ',' + a.toPrecision(6));
+    download(`polymer-glass-${stamp()}.csv`, L.join(String.fromCharCode(10)), 'text/csv');
+  });
+
+  $('btnJson').addEventListener('click', () => {
+    const sim = state.sim;
+    const data = {
+      meta: {
+        N: sim.N, chains: sim.numChains, chainLen: sim.chainLen,
+        density: sim.density, stiffness: sim.stiffness, seed: sim.seed,
+        dt: sim.dt, gamma: sim.gamma,
+        exportedAt: new Date().toISOString(),
+      },
+      msdTau: { refT: sim.refT, pts: state.msdPts },
+      nongaussianA2: state.a2Pts,
+      thermalHistory: state.history,
+    };
+    download(`polymer-glass-${stamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
   });
 
   window.addEventListener('keydown', (e) => {

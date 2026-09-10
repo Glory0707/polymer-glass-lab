@@ -6,7 +6,7 @@
   <title>玻璃化转变 · 一场降温实验</title>
   <meta name="description" content="把熔体降温，看链段冻进玻璃：Kremer–Grest 珠簧模型的实时分子动力学，浏览器里跑。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23131a26'/><text x='5' y='23' font-family='Georgia,serif' font-weight='700' font-size='17' fill='%23e8a33d'>Tg</text></svg>" />
-  <link rel="stylesheet" href="./src/style.css?v=16" />
+  <link rel="stylesheet" href="./src/style.css?v=17" />
   <script type="importmap">
     {
       "imports": {
@@ -77,6 +77,8 @@
       <input type="range" id="rateSlider" min="0" max="100" value="43" />
       <div class="kv"><span class="k">速度</span><span class="spacer"></span><output id="speedVal">16</output><span class="mini">步/帧</span></div>
       <input type="range" id="speedSlider" min="1" max="40" value="16" />
+      <div class="kv"><span class="k">链刚度</span><span class="spacer"></span><output id="stiffnessVal">0</output></div>
+      <input type="range" id="stiffnessSlider" min="0" max="10" step="0.25" value="0" />
       <div class="kv"><span class="k">参考点</span><span class="spacer"></span><button id="btnResetRef" class="pill mini-pill">归零</button></div>
     </div>
     <div class="pgroup">
@@ -120,6 +122,15 @@
       <figcaption><span>热历史</span></figcaption>
       <canvas id="histPlot"></canvas>
     </figure>
+    <figure>
+      <figcaption><span>非高斯参数 α₂</span></figcaption>
+      <canvas id="a2Plot"></canvas>
+    </figure>
+    <div id="exportRow">
+      <span class="mini">数据导出</span><span class="spacer"></span>
+      <button id="btnCsv" class="pill">CSV</button>
+      <button id="btnJson" class="pill">JSON</button>
+    </div>
   </aside>
 
   <div id="anneal" hidden>制备样品 · 退火 <span id="annealPct">0%</span></div>
@@ -136,6 +147,6 @@
       if (el) { el.textContent = msg; document.getElementById('fatal').hidden = false; }
     }, true);
   </script>
-  <script type="module" src="./src/main.js?v=16"></script>
+  <script type="module" src="./src/main.js?v=17"></script>
 </body>
 </html>

@@ -169,6 +169,69 @@ function fmtPow(e) {
 }
 
 /**
+ * 非高斯参数 α₂–τ：α₂ = 3⟨Δr⁴⟩ / 5⟨Δr²⟩² − 1，高斯动力学为 0
+ */
+export function drawA2Plot(canvas, pts) {
+  const g = prep(canvas);
+  if (!g) return;
+  const { ctx, w, h } = g;
+  const m = { l: 36, r: 10, t: 12, b: 24 };
+  const pw = w - m.l - m.r, ph = h - m.t - m.b;
+  const font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+
+  if (!pts || pts.length < 2) {
+    ctx.fillStyle = 'rgba(233,235,242,0.35)';
+    ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('采样中…', m.l + pw / 2, m.t + ph / 2);
+    return;
+  }
+  let maxTau = 1, hi = 0.2, lo = 0;
+  for (const [t, a] of pts) {
+    if (t > maxTau) maxTau = t;
+    if (a > hi) hi = a;
+    if (a < lo) lo = a;
+  }
+  hi *= 1.12;
+  const lx = Math.log10(maxTau * 1.25);
+  const X = (tau) => m.l + (Math.log10(Math.max(tau, 1)) / lx) * pw;
+  const Y = (a) => m.t + (1 - (a - lo) / (hi - lo || 1)) * ph;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillStyle = 'rgba(233,235,242,0.42)';
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  for (let d = -1; d <= Math.ceil(lx); d++) {
+    const tau = Math.pow(10, d);
+    if (tau > maxTau * 1.25) break;
+    const x = X(tau);
+    ctx.beginPath(); ctx.moveTo(x, m.t); ctx.lineTo(x, m.t + ph); ctx.stroke();
+    ctx.fillText(tau >= 1 ? tau.toFixed(0) : tau.toFixed(1), x, h - m.b + 14);
+  }
+  // 零线（高斯基准）
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath(); ctx.moveTo(m.l, Y(0)); ctx.lineTo(m.l + pw, Y(0)); ctx.stroke();
+  ctx.fillStyle = 'rgba(233,235,242,0.35)';
+  ctx.fillText('α₂ = 0', m.l + pw - 8, Y(0) - 5);
+
+  // 曲线
+  ctx.strokeStyle = '#f2f4fa';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  pts.forEach(([t, a], idx) => {
+    const x = X(t), y = Y(a);
+    idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(233,235,242,0.55)';
+  ctx.textAlign = 'left';
+  ctx.fillText('α₂', m.l + 6, m.t + 2);
+  ctx.textAlign = 'right';
+  ctx.fillText('τ (LJ 时间)', m.l + pw - 4, h - m.b + 14);
+}
+
+/**
  * 热历史图。bins: [{T, msd, pe, n}], fit: {Tg} | null,
  * opts: { peLo, peHi, hasData }
  */
