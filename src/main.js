@@ -1,354 +1,73 @@
 /**
- * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
+ * main.js — 渲染、HUD 与 UI 接线
+ * MD 内核运行在 Web Worker（sim.worker.js），本线程只做渲染与交互。
  */
-import { KGSim } from './md.js?v=18';
-import { GlassRenderer } from './renderer.js?v=18';
-import { drawMSDPlot, drawHistoryPlot, drawA2Plot } from './plots.js?v=18';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=18';
+import { GlassRenderer } from './renderer.js?v=19';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot } from './plots.js?v=19';
+import { THERMAL_LUT } from './analysis.js?v=19';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
 
-const state = {
-  sim: null,
-  renderer: null,
-  numChains: 60,
-  seed: 20260910,
-  paused: false,
-  mode: 'free',        // free | cool | heat
-  rate: 1e-3,          // ε/τ
-  speed: 16,           // MD 步/帧
-  colorMode: 'mobility',
-  showBonds: true,
-  // MSD 曲线
-  msdPts: [],
-  a2Pts: [],
-  stiffness: 0,
-  smallFrac: 0,
-  densityTarget: null,
-  chiCache: null,
-  chiFrame: -999,
-  ghosts: [],
-  nextSampleStep: 8,
-  // 热历史
-  history: [],
-  lastRecStep: 0,
-  bins: [],
-  fit: null,
-  fitDirty: false,
-  peLo: -3, peHi: 0,
-  chainColors: null,
-  perf: { tau: 0, fps: 0 },
-  annealLeft: 0, // >0 时正在分帧做初始化退火
+const worker = new Worker(new URL('./sim.worker.js?v=19', import.meta.url), { type: 'module' });
+
+/* 渲染所需的场景镜像（由 worker 消息填充） */
+const view = {
+  pos: new Float32Array(0),
+  sigma: null,
+  N: 0,
+  Lx: 1, Ly: 1, Lz: 1,
+  bondPairs: new Int32Array(0),
+  msdPts: [], a2Pts: [], ghosts: [], history: [],
+  refT: 1.0, fit: null, bins: [],
+  density: 1.0,
 };
 
-/* ---------------- 构建 / 重建模拟 ---------------- */
+const state = {
+  numChains: 60,
+  seed: 20260910,
+  temperature: 1.0,
+  stiffness: 0,
+  smallFrac: 0,
+  npt: false,
+  targetP: 10,
+  rate: 1e-3,
+  speed: 16,
+  paused: false,
+  mode: 'free',
+  showBonds: true,
+  colorMode: 'mobility',
+  perf: { fps: 0 },
+};
 
-function rebuild({ newSeed = false, keepT = true } = {}) {
-  if (newSeed) state.seed = (Math.random() * 0x7fffffff) | 0;
-  const prevT = state.sim ? state.sim.T : 1.0;
-  if (state.renderer) {
-    state.renderer.dispose();
-    state.renderer = null;
-  }
-  state.sim = new KGSim({
-    numChains: state.numChains,
-    chainLen: 40,
-    seed: state.seed,
-    temperature: keepT ? Math.min(T_MAX, Math.max(T_MIN, prevT)) : 1.0,
-    smallFrac: state.smallFrac,
-    annealSteps: 0, // 浏览器端分帧退火，避免卡死页面
-  });
-  state.sim.stiffness = state.stiffness;
-  state.annealLeft = 4000;
-  $('anneal').hidden = false;
-  state.renderer = new GlassRenderer($('viewport'), state.sim);
-  syncSliderToSim();
-
-  // 链分色查找表（金角分布色相，预先线性化）
-  const sim = state.sim;
-  state.chainColors = new Float32Array(sim.N * 3);
-  const rgb = [0, 0, 0];
-  for (let c = 0; c < sim.numChains; c++) {
-    hsl2rgb((c * 137.508) % 360, 0.62, 0.58, rgb);
-    const r = Math.pow(rgb[0], 2.2), g = Math.pow(rgb[1], 2.2), b = Math.pow(rgb[2], 2.2);
-    for (let k = 0; k < 40 && (c * 40 + k) < sim.N; k++) {
-      const i3 = (c * 40 + k) * 3;
-      state.chainColors[i3] = r; state.chainColors[i3 + 1] = g; state.chainColors[i3 + 2] = b;
-    }
-  }
-
-  state.sim.stiffness = state.stiffness;
-  state.msdPts = [];
-  state.a2Pts = [];
-  state.ghosts = [];
-  state.nextSampleStep = 8;
-  state.history = [];
-  state.lastRecStep = 0;
-  state.bins = [];
-  state.fit = null;
-  state.fitDirty = false;
-  $('seedVal').textContent = String(state.seed);
-}
-
-function syncSliderToSim() {
-  const T = state.sim.T;
-  $('tempSlider').value = String(T);
-  const v = $('vT');
-  v.textContent = T.toFixed(2);
-  v.style.color = tColorCss(T, 1, 0.35); // 大数字在深底上需要提亮
-  const b = $('railBubble');
-  if (b) {
-    b.style.left = ((T - 0.05) / 1.45 * 100).toFixed(2) + '%';
-    b.textContent = T.toFixed(2);
-  }
-}
-
-/* ---------------- MSD 曲线采样与幽灵存档 ---------------- */
-
-function sampleMSD() {
-  const sim = state.sim;
-  const st = sim.stepCount - sim.refStep;
-  if (st < state.nextSampleStep) return;
-  const tau = st * sim.dt;
-  const msd = sim.msdRef();
-  const m4 = sim.msd4Ref();
-  const a2 = msd > 1e-9 ? (3 * m4) / (5 * msd * msd) - 1 : 0;
-  state.msdPts.push([tau, msd]);
-  state.a2Pts.push([tau, a2]);
-  state.nextSampleStep = Math.max(state.nextSampleStep + 8, Math.ceil(state.nextSampleStep * 1.12));
-  if (state.msdPts.length > 500) { state.msdPts.shift(); state.a2Pts.shift(); }
-}
-
-/** 把当前 MSD 曲线存为幽灵线并重置参考点（换温度时） */
-function archiveGhost() {
-  if (state.msdPts.length > 5) {
-    state.ghosts.push({ T: state.sim.refT, pts: state.msdPts });
-    while (state.ghosts.length > 3) state.ghosts.shift();
-  }
-  state.sim.resetRef();
-  state.msdPts = [];
-  state.nextSampleStep = 8;
-}
-
-/** 温度改变（滑块拖动/急冷/熔化/自动升降温）统一入口 */
-function setTemperature(T, { archive = true } = {}) {
-  const sim = state.sim;
-  T = Math.min(T_MAX, Math.max(T_MIN, T));
-  // 拖动中累计漂移过大也先归档一次，避免曲线无法分辨新旧温度
-  if (archive && Math.abs(sim.T - sim.refT) > 0.15) archiveGhost();
-  sim.T = T;
-  syncSliderToSim();
-}
-
-/* ---------------- 热历史记录与 Tg 拟合 ---------------- */
-
-function recordHistory() {
-  const sim = state.sim;
-  if (sim.stepCount - state.lastRecStep < 150) return;
-  state.lastRecStep = sim.stepCount;
-  // 窗口基本满（≥80%，滞后 16–20τ）即可记录
-  if (sim.lagAge() < sim.lagSteps * sim.dt * 0.8) return;
-  state.history.push({ T: sim.T, msd: sim.msdLag(), pe: sim.pePerBead });
-  if (state.history.length > 6000) {
-    // 减半防炸：保留偶数位样本
-    state.history = state.history.filter((_, i) => i % 2 === 0);
-    state.lastRecStep = sim.stepCount;
-  }
-  state.fitDirty = true;
-}
-
-function refreshFit() {
-  state.bins = binByT(state.history, 0.05, 0, 1.6, 1);
-  state.fit = twoSegmentFit(state.bins);
-  // 快速降温等稀疏场景：分箱加宽再试一次
-  if (!state.fit && state.history.length >= 30) {
-    const wideBins = binByT(state.history, 0.12, 0, 1.6, 1);
-    state.fit = twoSegmentFit(wideBins);
-  }
-  let peLo = Infinity, peHi = -Infinity;
-  for (const b of state.bins) {
-    if (b.pe < peLo) peLo = b.pe;
-    if (b.pe > peHi) peHi = b.pe;
-  }
-  if (peLo < peHi) {
-    const pad = Math.max(0.05, (peHi - peLo) * 0.15);
-    state.peLo = peLo - pad;
-    state.peHi = peHi + pad;
-  }
-  const vTg = $('vTg');
-  vTg.textContent = state.fit ? '≈ ' + state.fit.Tg.toFixed(2) : '—';
-  vTg.style.color = state.fit ? 'var(--amber)' : '';
-}
-
-/** 画热历史图的拟合线段端点（拟合在对数空间，端点换算回 MSD 值） */
-function fitSegments(fit, bins) {
-  if (!fit || bins.length < 2) return null;
-  const t0 = bins[0].T, tSplit = fit.splitT, t1 = bins[bins.length - 1].T;
-  return {
-    seg1: [t0, fit.glass.toMsd(t0), tSplit, fit.glass.toMsd(tSplit)],
-    seg2: [tSplit, fit.liquid.toMsd(tSplit), t1, fit.liquid.toMsd(t1)],
-    Tg: fit.Tg,
-  };
-}
-
-/* ---------------- 珠子着色 ---------------- */
-
-const _rgb = [0, 0, 0];
-function updateColors() {
-  const sim = state.sim;
-  const ct = state.renderer.colorTarget;
-  if (state.colorMode === 'chain') {
-    ct.set(state.chainColors);
-    return;
-  }
-  if (state.colorMode === 'chi') {
-    // χ₄ 视角：邻域平滑迁移率的空间非均匀性
-    if (frameNo - state.chiFrame > 10 || !state.chiCache) {
-      state.chiCache = sim.smoothMobility();
-      state.chiFrame = frameNo;
-    }
-    const chi = state.chiCache, lut = THERMAL_LUT;
-    for (let i = 0; i < sim.N; i++) {
-      const x = Math.min(1, Math.max(0, (Math.log10(chi[i] + 1e-9) + 3) / 3.1));
-      const idx = (x * 255) | 0;
-      ct[i * 3] = Math.pow(lut[idx * 3], 2.2);
-      ct[i * 3 + 1] = Math.pow(lut[idx * 3 + 1], 2.2);
-      ct[i * 3 + 2] = Math.pow(lut[idx * 3 + 2], 2.2);
-    }
-    return;
-  }
-  if (sim.mobAge() < sim.dt) return; // 窗口尚未建立
-  const u = sim.upos, s = sim.snapMob, lut = THERMAL_LUT;
-  for (let i3 = 0; i3 < u.length; i3 += 3) {
-    const dx = u[i3] - s[i3], dy = u[i3 + 1] - s[i3 + 1], dz = u[i3 + 2] - s[i3 + 2];
-    const m2 = dx * dx + dy * dy + dz * dz;
-    // 10^-3 .. 10^0.25 对数映射：深钢蓝(冻结) → 冰白 → 琥珀(活跃)
-    const x = Math.min(1, Math.max(0, (Math.log10(m2 + 1e-9) + 3) / 3.1));
-    const idx = (x * 255) | 0;
-    ct[i3] = Math.pow(lut[idx * 3], 2.2);
-    ct[i3 + 1] = Math.pow(lut[idx * 3 + 1], 2.2);
-    ct[i3 + 2] = Math.pow(lut[idx * 3 + 2], 2.2);
-  }
-}
-
-/* ---------------- 主循环 ---------------- */
-
-let lastFrame = performance.now();
+let renderer = null;
 let frameNo = 0;
+let lastFrame = performance.now();
+let chainColors = null;
 
-function frame(now) {
-  requestAnimationFrame(frame);
-  const dtms = now - lastFrame;
-  lastFrame = now;
-  if (dtms > 0 && dtms < 500) {
-    state.perf.fps = state.perf.fps * 0.92 + (1000 / dtms) * 0.08;
-  }
-  frameNo++;
-
-  try {
-    // 初始化退火（分帧）：dt/4 小步长化解随机游走初始构象的重叠
-    if (state.annealLeft > 0) {
-      const sim = state.sim;
-      const baseDt = sim.dt;
-      sim.dt = baseDt / 4;
-      const chunk = Math.min(state.annealLeft, 100);
-      for (let s = 0; s < chunk; s++) sim.step();
-      state.annealLeft -= chunk;
-      sim.dt = baseDt;
-      $('annealPct').textContent = Math.round((1 - state.annealLeft / 4000) * 100) + '%';
-      state.renderer.update({ showBonds: state.showBonds, showBox: $('boxChk').checked });
-      if (state.annealLeft === 0) {
-        $('anneal').hidden = true;
-        sim.resetRef();
-        state.nextSampleStep = 8;
-      }
-      return;
-    }
-
-    if (!state.paused) {
-      const sim = state.sim;
-      // 密度渐变逼近目标，完成后重置参考点
-      if (state.densityTarget != null) {
-        const remain = Math.log(state.densityTarget / sim.density);
-        if (Math.abs(remain) < 0.004) {
-          sim.setDensity(state.densityTarget);
-          state.densityTarget = null;
-          sim.resetRef();
-          state.nextSampleStep = 8;
-        } else {
-          sim.setDensity(sim.density * Math.exp(remain * 0.1));
-        }
-        $('densityVal').textContent = sim.density.toFixed(2);
-      }
-      const n = state.speed;
-      for (let s = 0; s < n; s++) {
-        if (state.mode === 'cool') {
-          const next = sim.T - state.rate * sim.dt;
-          if (next <= T_MIN) { sim.T = T_MIN; setMode('free'); }
-          else sim.T = next;
-        } else if (state.mode === 'heat') {
-          const next = sim.T + state.rate * sim.dt;
-          if (next >= T_MAX) { sim.T = T_MAX; setMode('free'); }
-          else sim.T = next;
-        }
-        // 升降温时参考点跟随温度分段归档，MSD 曲线颜色/标注才与当前温度一致
-        if (state.mode !== 'free' && Math.abs(sim.T - sim.refT) > 0.15) archiveGhost();
-        sim.step();
-        sampleMSD();
-        recordHistory();
-      }
-      // 滑块跟随自动降温/升温
-      if (state.mode !== 'free') syncSliderToSim();
-    }
-
-    updateColors();
-    state.renderer.update({ showBonds: state.showBonds, showBox: $('boxChk').checked });
-
-    if (frameNo % 2 === 0) {
-      drawMSDPlot($('msdPlot'), state.ghosts, { T: state.sim.refT, pts: state.msdPts });
-      drawA2Plot($('a2Plot'), state.a2Pts);
-    }
-    if (state.fitDirty && frameNo % 45 === 0) {
-      refreshFit();
-      state.fitDirty = false;
-    }
-    if (frameNo % 3 === 0) {
-      const segs = fitSegments(state.fit, state.bins);
-      drawHistoryPlot($('histPlot'), state.bins, segs, {
-        peLo: state.peLo,
-        peHi: state.peHi,
-        peTicks: peTicks(),
-        raw: state.history,
-        hasData: state.history.length > 0,
-      });
-    }
-    if (frameNo % 15 === 0) updateStats();
-  } catch (err) {
-    showFatal(err);
-  }
+/* ---------------- 小工具 ---------------- */
+const _rgb = [0, 0, 0];
+function thermalLUTColor(x, out) {
+  const idx = (Math.min(1, Math.max(0, x)) * 255) | 0;
+  out[0] = Math.pow(THERMAL_LUT[idx * 3] * 0.62 + 0.38, 2.2);
+  out[1] = Math.pow(THERMAL_LUT[idx * 3 + 1] * 0.62 + 0.38, 2.2);
+  out[2] = Math.pow(THERMAL_LUT[idx * 3 + 2] * 0.62 + 0.38, 2.2);
 }
-
-function peTicks() {
-  if (!state.history.length) return [];
-  const { peLo, peHi } = state;
-  if (!isFinite(peLo) || !isFinite(peHi) || peHi <= peLo) return [];
-  const mid = (peLo + peHi) / 2;
-  return [[peLo, peLo.toFixed(1)], [mid, mid.toFixed(1)], [peHi, peHi.toFixed(1)]];
+function tColorCss(T, alpha = 1, lift = 0.35) {
+  const x = Math.min(1, Math.max(0, (T - T_MIN) / (T_MAX - T_MIN)));
+  const h = 220 - 210 * x;
+  return alpha >= 1 ? `hsl(${h.toFixed(0)},85%,58%)` : `hsla(${h.toFixed(0)},85%,58%,${alpha})`;
 }
+const wsend = (msg, transfer) => worker.postMessage(msg, transfer || []);
 
-function updateStats() {
-  const sim = state.sim;
-  const vT = $('vT');
-  vT.textContent = sim.T.toFixed(2);
-  vT.style.color = tColorCss(sim.T);
-  $('vTmeas').textContent = `(${sim.keTemp.toFixed(2)})`;
-  $('vPE').textContent = sim.pePerBead.toFixed(2);
-  const lastMsd = state.msdPts.length ? state.msdPts[state.msdPts.length - 1][1] : NaN;
-  $('vMSD').textContent = isFinite(lastMsd) ? lastMsd.toFixed(2) : '—';
-  $('vTau').textContent = sim.time.toFixed(0);
-  $('vFps').textContent = Math.round(state.perf.fps) + 'fps';
+function download(name, text, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: mime }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+const stamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
 
 function showFatal(err) {
   console.error(err);
@@ -357,80 +76,263 @@ function showFatal(err) {
   box.hidden = false;
 }
 
-/* ---------------- UI 接线 ---------------- */
+/* ---------------- worker 消息 ---------------- */
+worker.onmessage = (e) => {
+  const m = e.data;
+  switch (m.type) {
+    case 'ready': {
+      view.N = m.N;
+      view.Lx = m.Lx; view.Ly = m.Ly; view.Lz = m.Lz;
+      view.sigma = new Float32Array(m.sigma);
+      view.bondPairs = new Int32Array(m.bondPairs);
+      view.pos = new Float32Array(m.N * 3);
+      if (renderer) { renderer.dispose(); renderer = null; }
+      renderer = new GlassRenderer($('viewport'), view);
+      applyChainColors();
+      hideAnneal();
+      $('seedVal').textContent = String(state.seed);
+      break;
+    }
+    case 'anneal': {
+      const box = $('anneal');
+      box.hidden = false;
+      $('annealPct').textContent = Math.round(m.pct * 100) + '%';
+      break;
+    }
+    case 'frame': {
+      view.pos = new Float32Array(m.pos);
+      view.chi = m.chi ? new Float32Array(m.chi) : view.chi;
+      view.mob = m.mob ? new Float32Array(m.mob) : view.mob;
+      view.density = m.stats.density;
+      updateStats(m.stats);
+      if (renderer) {
+        updateColors();
+        renderer.update({ showBonds: state.showBonds, showBox: $('boxChk').checked });
+      }
+      if (frameNo % 2 === 0) {
+        drawMSDPlot($('msdPlot'), view.ghosts, { T: view.refT, pts: view.msdPts });
+      }
+      if (frameNo % 3 === 0) {
+        drawHistoryPlot($('histPlot'), view.bins, fitSegments(view.fit, view.bins), {
+          peLo: view.peLo ?? -3, peHi: view.peHi ?? 0,
+          peTicks: peTicks(),
+          raw: view.history,
+          hasData: view.history.length > 0,
+        });
+      }
+      if (frameNo % 4 === 0) drawA2Plot($('a2Plot'), view.a2Pts);
+      frameNo++;
+      break;
+    }
+    case 'samples': {
+      view.msdPts = m.msdPts;
+      view.a2Pts = m.a2Pts;
+      view.ghosts = m.ghosts;
+      view.history = m.history;
+      view.refT = m.refT;
+      view.fit = m.fit;
+      view.bins = binByTLocal(m.history);
+      const vTg = $('vTg');
+      vTg.textContent = m.fit ? '≈ ' + m.fit.Tg.toFixed(2) : '—';
+      vTg.style.color = m.fit ? 'var(--accent)' : '';
+      break;
+    }
+    case 'fatal':
+      showFatal(m.msg);
+      break;
+  }
+};
+worker.onerror = (e) => showFatal(e.message || 'worker 错误');
 
+function binByTLocal(history, width = 0.05) {
+  const bins = [];
+  const nb = Math.ceil(1.6 / width);
+  for (let k = 0; k < nb; k++) {
+    const lo = k * width, hi = lo + width;
+    let msd = 0, n = 0;
+    for (const s of history) {
+      if (s.T >= lo && s.T < hi) { msd += s.msd; n++; }
+    }
+    if (n) bins.push({ T: lo + width / 2, msd: msd / n, n });
+  }
+  return bins;
+}
+
+function applyChainColors() {
+  if (!renderer) return;
+  const per = Math.floor(view.N / state.numChains);
+  if (per < 1) return;
+  chainColors = new Float32Array(view.N * 3);
+  for (let c = 0; c < state.numChains; c++) {
+    const h = ((c * 137.508 / 360) % 1) * 6;
+    const seg = Math.floor(h), f = h - seg;
+    const q = 1 - f;
+    let r = 0.35, g = 0.35, b = 0.35;
+    if (seg === 0) { r += 0.45 * q; g += 0.15 * q; }
+    else if (seg === 1) { g += 0.35 * q; b += 0.1 * q; }
+    else if (seg === 2) { g += 0.4 * q; }
+    else if (seg === 3) { b += 0.4 * q; r += 0.1 * q; }
+    else if (seg === 4) { b += 0.45 * q; r += 0.15 * q; }
+    else { r += 0.4 * q; b += 0.2 * q; }
+    const R = Math.pow(r, 2.2), G = Math.pow(g, 2.2), B = Math.pow(b, 2.2);
+    for (let k = c * per; k < Math.min((c + 1) * per, view.N); k++) {
+      chainColors[k * 3] = R; chainColors[k * 3 + 1] = G; chainColors[k * 3 + 2] = B;
+    }
+  }
+  renderer.colorTarget.set(chainColors);
+}
+
+/* ---------------- 珠子着色 ---------------- */
+function updateColors() {
+  if (!renderer) return;
+  const ct = renderer.colorTarget;
+  if (state.colorMode === 'chain') {
+    if (chainColors) ct.set(chainColors);
+    return;
+  }
+  const src = state.colorMode === 'chi' ? view.chi : view.mob;
+  if (!src) return;
+  for (let i = 0; i < view.N; i++) {
+    thermalLUTColor((Math.log10(src[i] + 1e-9) + 3) / 3.1, _rgb);
+    ct[i * 3] = _rgb[0]; ct[i * 3 + 1] = _rgb[1]; ct[i * 3 + 2] = _rgb[2];
+  }
+}
+
+/* ---------------- HUD ---------------- */
+function updateStats(st) {
+  const vT = $('vT');
+  vT.textContent = st.T.toFixed(2);
+  vT.style.color = tColorCss(st.T);
+  $('vTmeas').textContent = '(' + st.Tmeas.toFixed(2) + ')';
+  $('vPE').textContent = st.pe.toFixed(2);
+  const lastMsd = view.msdPts.length ? view.msdPts[view.msdPts.length - 1][1] : st.msd;
+  $('vMSD').textContent = lastMsd.toFixed(2);
+  $('vTau').textContent = st.tau.toFixed(0);
+  $('vFps').textContent = Math.round(state.perf.fps) + 'fps';
+  $('densityVal').textContent = st.density.toFixed(2);
+}
+
+function peTicks() {
+  if (!view.history.length) return [];
+  const peLo = view.peLo ?? -3, peHi = view.peHi ?? 0;
+  if (!isFinite(peLo) || !isFinite(peHi) || peHi <= peLo) return [];
+  const mid = (peLo + peHi) / 2;
+  return [[peLo, peLo.toFixed(1)], [mid, mid.toFixed(1)], [peHi, peHi.toFixed(1)]];
+}
+
+function fitSegments(fit, bins) {
+  if (!fit || bins.length < 2) return null;
+  const t0 = bins[0].T, tSplit = fit.splitT, t1 = bins[bins.length - 1].T;
+  const at = (line, T) => Math.pow(10, line.a * T + line.b);
+  return {
+    seg1: [t0, at(fit.glass, t0), tSplit, at(fit.glass, tSplit)],
+    seg2: [tSplit, at(fit.liquid, tSplit), t1, at(fit.liquid, t1)],
+    Tg: fit.Tg,
+  };
+}
+
+/* ---------------- UI 接线 ---------------- */
 function setMode(mode) {
   state.mode = mode;
   $('btnCool').classList.toggle('active', mode === 'cool');
   $('btnHeat').classList.toggle('active', mode === 'heat');
+  wsend({ cmd: 'mode', v: mode });
 }
 
 function bindUI() {
   const tempSlider = $('tempSlider');
   tempSlider.addEventListener('input', () => {
     setMode('free');
-    setTemperature(parseFloat(tempSlider.value));
+    const T = parseFloat(tempSlider.value);
+    state.temperature = T;
+    wsend({ cmd: 'temp', T });
+    const v = $('vT');
+    v.textContent = T.toFixed(2);
+    v.style.color = tColorCss(T);
   });
-  tempSlider.addEventListener('change', () => archiveGhost());
+  tempSlider.addEventListener('change', () => wsend({ cmd: 'archive' }));
 
   $('btnCool').addEventListener('click', () => setMode('cool'));
   $('btnHeat').addEventListener('click', () => setMode('heat'));
 
   const rateSlider = $('rateSlider');
-  const rateLabel = $('rateVal');
   const showRate = () => {
-    rateLabel.textContent = state.rate >= 1e-2
+    $('rateVal').textContent = state.rate >= 1e-2
       ? state.rate.toFixed(1) + '×10⁻²'
       : (state.rate * 1e3).toFixed(1) + '×10⁻³';
   };
   rateSlider.addEventListener('input', () => {
     state.rate = Math.pow(10, -4 + (parseInt(rateSlider.value, 10) / 100) * 2.3);
     showRate();
+    wsend({ cmd: 'rate', v: state.rate });
   });
-  state.rate = Math.pow(10, -4 + (43 / 100) * 2.3); // ≈1.0×10⁻³
+  state.rate = Math.pow(10, -4 + (43 / 100) * 2.3);
   showRate();
 
-  $('btnQuench').addEventListener('click', () => { setMode('free'); setTemperature(T_MIN); archiveGhost(); });
-  $('btnMelt').addEventListener('click', () => { setMode('free'); setTemperature(T_MAX); archiveGhost(); });
+  $('btnQuench').addEventListener('click', () => {
+    setMode('free'); state.temperature = T_MIN;
+    tempSlider.value = String(T_MIN);
+    wsend({ cmd: 'temp', T: T_MIN });
+    wsend({ cmd: 'archive' });
+  });
+  $('btnMelt').addEventListener('click', () => {
+    setMode('free'); state.temperature = T_MAX;
+    tempSlider.value = String(T_MAX);
+    wsend({ cmd: 'temp', T: T_MAX });
+    wsend({ cmd: 'archive' });
+  });
 
   const pauseBtn = $('btnPause');
   pauseBtn.addEventListener('click', () => {
     state.paused = !state.paused;
     pauseBtn.textContent = state.paused ? '继续' : '暂停';
+    wsend({ cmd: 'pause', v: state.paused });
   });
 
   $('speedSlider').addEventListener('input', (e) => {
     state.speed = parseInt(e.target.value, 10);
     $('speedVal').textContent = String(state.speed);
+    wsend({ cmd: 'speed', v: state.speed });
+  });
+
+  $('compSel').addEventListener('change', (e) => {
+    state.smallFrac = parseFloat(e.target.value);
+    sendRebuild();
+  });
+  $('densitySlider').addEventListener('input', (e) => {
+    wsend({ cmd: 'density-target', v: parseFloat(e.target.value) });
+  });
+
+  $('nptChk').addEventListener('change', (e) => {
+    state.npt = e.target.checked;
+    wsend({ cmd: 'npt', v: state.npt, p0: state.targetP });
+  });
+  $('p0Slider').addEventListener('input', (e) => {
+    state.targetP = parseFloat(e.target.value);
+    $('p0Val').textContent = String(state.targetP);
+    wsend({ cmd: 'npt', v: state.npt, p0: state.targetP });
   });
 
   const stiffnessSlider = $('stiffnessSlider');
-  const applyStiffness = (v) => {
-    state.stiffness = v;
-    if (state.sim) state.sim.stiffness = v;
-    $('stiffnessVal').textContent = String(parseFloat(v.toFixed(2)));
-  };
-  stiffnessSlider.addEventListener('input', () => applyStiffness(parseFloat(stiffnessSlider.value)));
+  stiffnessSlider.addEventListener('input', () => {
+    state.stiffness = parseFloat(stiffnessSlider.value);
+    $('stiffnessVal').textContent = String(parseFloat(state.stiffness.toFixed(2)));
+    wsend({ cmd: 'stiffness', v: state.stiffness });
+  });
 
-  $('sizeSel').addEventListener('change', (e) => {
-    state.numChains = parseInt(e.target.value, 10);
-    rebuild();
+  $('btnNew').addEventListener('click', () => {
+    state.seed = (Math.random() * 0x7fffffff) | 0;
+    sendRebuild();
   });
-  $('compSel').addEventListener('change', (e) => {
-    state.smallFrac = parseFloat(e.target.value);
-    rebuild();
-  });
-  $('densitySlider').addEventListener('input', (e) => {
-    state.densityTarget = parseFloat(e.target.value);
-  });
-  $('btnNew').addEventListener('click', () => rebuild({ newSeed: true }));
-  $('btnResetRef').addEventListener('click', () => archiveGhost());
+  $('btnResetRef').addEventListener('click', () => wsend({ cmd: 'archive' }));
 
   $('colorSel').addEventListener('change', (e) => { state.colorMode = e.target.value; });
   $('bondsChk').addEventListener('change', (e) => { state.showBonds = e.target.checked; });
+  $('boxChk').addEventListener('change', (e) => { state.showBox = e.target.checked; });
 
   $('figsToggle').addEventListener('click', () => $('figs').classList.toggle('open'));
   $('figsClose').addEventListener('click', () => $('figs').classList.remove('open'));
+
   const pop = $('paramsPop');
   const ptoggle = $('paramsToggle');
   ptoggle.addEventListener('click', (e) => {
@@ -452,77 +354,94 @@ function bindUI() {
     }
   });
 
-  const download = (name, text, mime) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], { type: mime }));
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  };
-  const stamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-
-  $('btnCsv').addEventListener('click', () => {
-    const sim = state.sim;
-    const L = [];
-    L.push('# polymer-glass-lab export');
-    L.push(`# N=${sim.N} chains=${sim.numChains} chainLen=${sim.chainLen} rho=${sim.density} kappa=${sim.stiffness} seed=${sim.seed}`);
-    L.push('');
-    L.push('# msd-tau (current run, refT=' + sim.refT.toFixed(3) + ')');
-    L.push('tau,msd');
-    for (const [t, v] of state.msdPts) L.push(t.toFixed(4) + ',' + v.toPrecision(6));
-    L.push('');
-    L.push('# thermal-history');
-    L.push('T,msd20,pe');
-    for (const s2 of state.history) L.push(s2.T.toFixed(3) + ',' + s2.msd.toPrecision(6) + ',' + s2.pe.toPrecision(6));
-    L.push('');
-    L.push('# nongaussian-a2');
-    L.push('tau,a2');
-    for (const [t, a] of state.a2Pts) L.push(t.toFixed(4) + ',' + a.toPrecision(6));
-    download(`polymer-glass-${stamp()}.csv`, L.join(String.fromCharCode(10)), 'text/csv');
-  });
-
-  $('btnJson').addEventListener('click', () => {
-    const sim = state.sim;
-    const data = {
-      meta: {
-        N: sim.N, chains: sim.numChains, chainLen: sim.chainLen,
-        density: sim.density, stiffness: sim.stiffness, seed: sim.seed,
-        dt: sim.dt, gamma: sim.gamma,
-        exportedAt: new Date().toISOString(),
-      },
-      msdTau: { refT: sim.refT, pts: state.msdPts },
-      nongaussianA2: state.a2Pts,
-      thermalHistory: state.history,
-    };
-    download(`polymer-glass-${stamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
-  });
-
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     if (e.code === 'Space') { e.preventDefault(); pauseBtn.click(); }
     else if (e.key === 'c') $('btnQuench').click();
     else if (e.key === 'h') $('btnMelt').click();
-    else if (e.key === 'r') $('btnResetRef').click();
   });
 
-  const repo = $('repoLink');
-  if (repo) repo.href = 'https://github.com/Glory0707/polymer-glass-lab';
+  $('btnCsv').addEventListener('click', exportCsv);
+  $('btnJson').addEventListener('click', exportJson);
+}
+
+function sendRebuild() {
+  showAnneal();
+  wsend({
+    cmd: 'rebuild',
+    numChains: state.numChains, seed: state.seed,
+    temperature: state.temperature, smallFrac: state.smallFrac,
+    stiffness: state.stiffness, npt: state.npt, targetP: state.targetP,
+    annealSteps: 4000,
+  });
+}
+
+function showAnneal() {
+  $('anneal').hidden = false;
+  $('annealPct').textContent = '0%';
+}
+function hideAnneal() {
+  $('anneal').hidden = true;
+  $('seedVal').textContent = String(state.seed);
+}
+
+/* ---------------- 导出 ---------------- */
+function exportCsv() {
+  const L = [];
+  L.push('# polymer-glass-lab export');
+  L.push('# N=' + view.N + ' chains=' + state.numChains + ' chainLen=40 density=' + view.density.toFixed(3) + ' kappa=' + state.stiffness + ' seed=' + state.seed);
+  L.push('');
+  L.push('# msd-tau (refT=' + view.refT.toFixed(3) + ')');
+  L.push('tau,msd');
+  for (const [t, v] of view.msdPts) L.push(t.toFixed(4) + ',' + v.toPrecision(6));
+  L.push('');
+  L.push('# thermal-history');
+  L.push('T,msd20,pe');
+  for (const s of view.history) L.push(s.T.toFixed(3) + ',' + s.msd.toPrecision(6) + ',' + s.pe.toPrecision(6));
+  L.push('');
+  L.push('# nongaussian-a2');
+  L.push('tau,a2');
+  for (const [t, a] of view.a2Pts) L.push(t.toFixed(4) + ',' + a.toPrecision(6));
+  download('polymer-glass-' + stamp() + '.csv', L.join(String.fromCharCode(10)), 'text/csv');
+}
+
+function exportJson() {
+  const data = {
+    meta: {
+      N: view.N, chains: state.numChains, chainLen: 40,
+      density: view.density, stiffness: state.stiffness, seed: state.seed,
+      npt: state.npt, targetP: state.targetP,
+      exportedAt: new Date().toISOString(),
+    },
+    msdTau: { refT: view.refT, pts: view.msdPts },
+    nongaussianA2: view.a2Pts,
+    thermalHistory: view.history,
+  };
+  download('polymer-glass-' + stamp() + '.json', JSON.stringify(data, null, 2), 'application/json');
+}
+
+/* ---------------- 帧循环（渲染 + HUD） ---------------- */
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dtms = now - lastFrame;
+  lastFrame = now;
+  if (dtms > 0 && dtms < 500) state.perf.fps = state.perf.fps * 0.92 + (1000 / dtms) * 0.08;
+  frameNo++;
+  if (renderer) renderer.update({ showBonds: state.showBonds, showBox: $('boxChk').checked });
 }
 
 /* ---------------- 启动 ---------------- */
-
 function boot() {
   window.addEventListener('error', (e) => {
-    const msg = e.error?.message || e.message || '';
-    // 忽略无消息的资源加载错误与 ResizeObserver 的良性循环警告
+    const msg = (e.error && e.error.message) || e.message || '';
     if (!msg || /ResizeObserver loop/.test(msg)) return;
     showFatal(msg);
   });
   try {
     bindUI();
-    rebuild();
-    window.__lab = { state, setTemperature, archiveGhost, refreshFit, setMode }; // 调试/无头测试句柄
+    sendRebuild();
     requestAnimationFrame(frame);
+    $('repoLink').href = 'https://github.com/Glory0707/polymer-glass-lab';
   } catch (err) {
     showFatal(err);
   }

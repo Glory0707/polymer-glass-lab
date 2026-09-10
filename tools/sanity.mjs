@@ -118,6 +118,17 @@ check('刚度开启 NVE 能量守恒', maxDrift < 0.05, `最大漂移 ${maxDrift
   check('双分散体系稳定（25% 小珠, κ=4）', okB, `PE=${b.pePerBead.toFixed(2)} maxBond=${b.maxBondLength().toFixed(3)}`);
   check('密度调整稳定（ρ→1.2）', okD, `PE=${b.pePerBead.toFixed(2)} ρ=${b.density.toFixed(3)}`);
   check('χ₄ 视角邻域迁移率有限', okC, `${chi.length} 珠全有限`);
+  // NPT 恒压：P₀=10，T=0.5 → 应压实到 ρ > 1.0
+  const n = new KGSim({ numChains: 10, chainLen: 40, seed: 13, temperature: 0.5, density: 1.0, npt: true, targetP: 10 });
+  n.run(15000);
+  check('NPT 恒压压实（P₀=10, T=0.5 → ρ>1.0）', n.density > 1.0 && Number.isFinite(n.pePerBead),
+    `ρ=${n.density.toFixed(3)} P=${n.pressure.toFixed(2)} maxBond=${n.maxBondLength().toFixed(3)}`);
+  // χ₄ 粗粒化估计量有限且非负
+  n.run(2000);
+  const c4s = [];
+  for (let i = 0; i < 4; i++) { n.run(300); c4s.push(n.chi4Coarse()); }
+  const okC4 = c4s.every((v) => Number.isFinite(v) && v >= 0);
+  check('χ₄ 粗粒化估计量有限非负', okC4, c4s.map((v) => v.toFixed(2)).join(' '));
 }
 
 const bins = binByT(history, 0.1, 0, 1.6, 1);

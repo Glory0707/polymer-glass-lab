@@ -66,6 +66,11 @@ export class KGSim {
     this.stiffness = opts.stiffness ?? 0;
     // 双分散：小珠（σ = 0.7σ₀）占比，增塑效应使 Tg 下移
     this.smallFrac = opts.smallFrac ?? 0;
+    // 恒压（NPT）：Berendsen 各向同性弱耦合，P₀ = 0 时密度自调
+    this.npt = opts.npt ?? false;
+    this.targetP = opts.targetP ?? 0;
+    this.tauP = 1.0;
+    this.virial = 0;
     this.seed = (opts.seed ?? 20260910) >>> 0;
 
     this.rng = mulberry32(this.seed);
@@ -180,7 +185,10 @@ export class KGSim {
     this.ncx = Math.max(1, Math.floor(this.Lx / RC));
     this.ncy = Math.max(1, Math.floor(this.Ly / RC));
     this.ncz = Math.max(1, Math.floor(this.Lz / RC));
-    this.cellHead = new Int32Array(this.ncx * this.ncy * this.ncz);
+    const total = this.ncx * this.ncy * this.ncz;
+    if (!this.cellHead || this.cellHead.length !== total) {
+      this.cellHead = new Int32Array(total);
+    }
     this.cellNext = new Int32Array(this.N);
   }
 
@@ -206,6 +214,7 @@ export class KGSim {
   _computeForces() {
     const f = this.force;
     f.fill(0);
+    this.virial = 0;
     const p = this.pos;
     const { Lx, Ly, Lz, ncx, ncy, ncz, N } = this;
     let pe = 0;
@@ -254,6 +263,7 @@ export class KGSim {
                   let uw = 4 * (i12 - i6) + 1; // 已平移至截断处为零
                   if (uw > 2e3) uw = 2e3;
                   pe += uw;
+                  this.virial += fc * r2;
                 }
               }
               j = this.cellNext[j];
@@ -282,6 +292,7 @@ export class KGSim {
       f[i3] += fx; f[i3 + 1] += fy; f[i3 + 2] += fz;
       f[j3] -= fx; f[j3 + 1] -= fy; f[j3 + 2] -= fz;
       pe += -0.5 * K_FENE * R02 * Math.log(denom);
+      this.virial += fx * dx + fy * dy + fz * dz;
     }
 
     // 弯角势：相邻两键夹角的 cos 型弯曲能（半柔性链）
@@ -375,6 +386,18 @@ export class KGSim {
     if (this.stepCount - this.mobAnchor >= this.mobSteps) {
       this.snapMob.set(this.upos);
       this.mobAnchor = this.stepCount;
+    }
+    // NPT：Berendsen 各向同性弱耦合（每个整步一次）
+    if (this.npt) {
+      const beta = 0.5, lambda = Math.max(0.98, Math.min(1.02,
+        1 - beta * (this.dt / this.tauP) * (this.targetP - this.pressure)));
+      this.Lx *= lambda; this.Ly *= lambda; this.Lz *= lambda;
+      this.density = this.N / (this.Lx * this.Ly * this.Lz);
+      for (let a = 0; a < this.pos.length; a++) {
+        this.pos[a] *= lambda;
+        this.upos[a] *= lambda;
+      }
+      this._allocCells();
     }
   }
 
@@ -480,6 +503,50 @@ export class KGSim {
       out[i] = cnt ? sum / cnt : m2[i];
     }
     return out;
+  }
+
+  /** 瞬时压强（理想项 + 维里项），LJ 约化单位 */
+  get pressure() {
+    const V = this.Lx * this.Ly * this.Lz;
+    return (this.N * this.keTemp + this.virial) / (3 * V);
+  }
+
+  /**
+   * 粗粒化四点易感性 χ₄(s=5τ)：以 5τ 迁移率窗口为滞后，位移阈值 0.3σ，
+   * 3σ 粗粒化格子上的占有分数涨落 × N（实用估计量）
+   */
+  chi4Coarse() {
+    const cs = 3, a2 = 0.09;
+    const sm = this.snapMob;
+    const m3x = Math.max(1, Math.floor(this.Lx / cs));
+    const m3y = Math.max(1, Math.floor(this.Ly / cs));
+    const m3z = Math.max(1, Math.floor(this.Lz / cs));
+    const M = m3x * m3y * m3z;
+    const qsum = new Float64Array(M), cnt = new Float64Array(M);
+    const p = this.pos, u = this.upos;
+    for (let i = 0; i < this.N; i++) {
+      const i3 = i * 3;
+      const cx = Math.min(m3x - 1, (p[i3] / this.Lx * m3x) | 0);
+      const cy = Math.min(m3y - 1, (p[i3 + 1] / this.Ly * m3y) | 0);
+      const cz = Math.min(m3z - 1, (p[i3 + 2] / this.Lz * m3z) | 0);
+      const ci = cx + m3x * (cy + m3y * cz);
+      const dx = u[i3] - sm[i3], dy = u[i3 + 1] - sm[i3 + 1], dz = u[i3 + 2] - sm[i3 + 2];
+      const occ = dx * dx + dy * dy + dz * dz < a2 ? 1 : 0;
+      qsum[ci] += occ;
+      cnt[ci] += 1;
+    }
+    let wq = 0, wqq = 0, wt = 0;
+    for (let k = 0; k < M; k++) {
+      if (cnt[k] === 0) continue;
+      const q = qsum[k] / cnt[k];
+      wq += cnt[k] * q;
+      wqq += cnt[k] * q * q;
+      wt += cnt[k];
+    }
+    if (wt === 0) return 0;
+    const mean = wq / wt;
+    const varW = wqq / wt - mean * mean;
+    return this.N * Math.max(0, varW) / (wt / Math.max(1, m3x * m3y * m3z * 0.999));
   }
 
   /** 非折叠坐标快照（配合 msdOver 做自定义窗口的 MSD 测量） */
