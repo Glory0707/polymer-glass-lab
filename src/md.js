@@ -71,6 +71,9 @@ export class KGSim {
     this.targetP = opts.targetP ?? 0;
     this.tauP = 1.0;
     this.virial = 0;
+    // 维里张量分量（应力用）与形变状态（力学轴）
+    this.wxx = 0; this.wyy = 0; this.wzz = 0; this.wxy = 0;
+    this.deform = { mode: 'none', rate: 0.02, amp: 0.12, freq: 0.5, strain: 0, epsCur: 0, phase: 0, gamma: 0, target: null };
     this.seed = (opts.seed ?? 20260910) >>> 0;
 
     this.rng = mulberry32(this.seed);
@@ -214,7 +217,8 @@ export class KGSim {
   _computeForces() {
     const f = this.force;
     f.fill(0);
-    this.virial = 0;
+    this.wxx = 0; this.wyy = 0; this.wzz = 0; this.wxy = 0;
+    const shearOff = this.deform.gamma * this.Ly; // y 镜像行的 x 偏移 = γ·Ly
     const p = this.pos;
     const { Lx, Ly, Lz, ncx, ncy, ncz, N } = this;
     let pe = 0;
@@ -242,6 +246,7 @@ export class KGSim {
                 let dx = xi - p[j3];
                 let dy = yi - p[j3 + 1];
                 let dz = zi - p[j3 + 2];
+                if (shearOff !== 0) dx -= shearOff * Math.round(dy / Ly);
                 dx -= Lx * Math.round(dx / Lx);
                 dy -= Ly * Math.round(dy / Ly);
                 dz -= Lz * Math.round(dz / Lz);
@@ -263,7 +268,8 @@ export class KGSim {
                   let uw = 4 * (i12 - i6) + 1; // 已平移至截断处为零
                   if (uw > 2e3) uw = 2e3;
                   pe += uw;
-                  this.virial += fc * r2;
+                  this.wxx += fxc * dx; this.wxy += fxc * dy;
+                  this.wyy += fyc * dy; this.wzz += fzc * dz;
                 }
               }
               j = this.cellNext[j];
@@ -281,6 +287,7 @@ export class KGSim {
       let dx = p[i3] - p[j3];
       let dy = p[i3 + 1] - p[j3 + 1];
       let dz = p[i3 + 2] - p[j3 + 2];
+      if (shearOff !== 0) dx -= shearOff * Math.round(dy / Ly);
       dx -= Lx * Math.round(dx / Lx);
       dy -= Ly * Math.round(dy / Ly);
       dz -= Lz * Math.round(dz / Lz);
@@ -292,7 +299,8 @@ export class KGSim {
       f[i3] += fx; f[i3 + 1] += fy; f[i3 + 2] += fz;
       f[j3] -= fx; f[j3 + 1] -= fy; f[j3 + 2] -= fz;
       pe += -0.5 * K_FENE * R02 * Math.log(denom);
-      this.virial += fx * dx + fy * dy + fz * dz;
+      this.wxx += fx * dx; this.wxy += fx * dy;
+      this.wyy += fy * dy; this.wzz += fz * dz;
     }
 
     // 弯角势：相邻两键夹角的 cos 型弯曲能（半柔性链）
@@ -304,9 +312,13 @@ export class KGSim {
         let b1x = p[i3] - p[a3];     b1x -= Lx * Math.round(b1x / Lx);
         let b1y = p[i3 + 1] - p[a3 + 1]; b1y -= Ly * Math.round(b1y / Ly);
         let b1z = p[i3 + 2] - p[a3 + 2]; b1z -= Lz * Math.round(b1z / Lz);
-        let b2x = p[b3] - p[i3];     b2x -= Lx * Math.round(b2x / Lx);
-        let b2y = p[b3 + 1] - p[i3 + 1]; b2y -= Ly * Math.round(b2y / Ly);
-        let b2z = p[b3 + 2] - p[i3 + 2]; b2z -= Lz * Math.round(b2z / Lz);
+        let b2x = p[b3] - p[i3];
+        let b2y = p[b3 + 1] - p[i3 + 1];
+        let b2z = p[b3 + 2] - p[i3 + 2];
+        if (shearOff !== 0) b2x -= shearOff * Math.round(b2y / Ly);
+        b2x -= Lx * Math.round(b2x / Lx);
+        b2y -= Ly * Math.round(b2y / Ly);
+        b2z -= Lz * Math.round(b2z / Lz);
         const inv1 = 1 / Math.sqrt(b1x * b1x + b1y * b1y + b1z * b1z);
         const inv2 = 1 / Math.sqrt(b2x * b2x + b2y * b2y + b2z * b2z);
         const n1x = b1x * inv1, n1y = b1y * inv1, n1z = b1z * inv1;
@@ -373,6 +385,7 @@ export class KGSim {
       p[i3 + 2] = np;
     }
 
+    this._deformStep();
     this._buildCells();
     this._computeForces();
 
@@ -391,13 +404,7 @@ export class KGSim {
     if (this.npt) {
       const beta = 0.5, lambda = Math.max(0.98, Math.min(1.02,
         1 - beta * (this.dt / this.tauP) * (this.targetP - this.pressure)));
-      this.Lx *= lambda; this.Ly *= lambda; this.Lz *= lambda;
-      this.density = this.N / (this.Lx * this.Ly * this.Lz);
-      for (let a = 0; a < this.pos.length; a++) {
-        this.pos[a] *= lambda;
-        this.upos[a] *= lambda;
-      }
-      this._allocCells();
+      this._scaleBox(lambda, lambda, lambda);
     }
   }
 
@@ -449,16 +456,118 @@ export class KGSim {
    */
   setDensity(rhoNew) {
     const f = Math.pow(this.density / rhoNew, 1 / 3);
-    this.density = rhoNew;
-    this.Lx *= f; this.Ly *= f; this.Lz *= f;
-    for (let a = 0; a < this.pos.length; a++) {
-      this.pos[a] *= f;
-      this.upos[a] *= f;
+    this._scaleBox(f, f, f);
+  }
+
+  /** 各向异性盒缩放：单轴/循环形变、密度调整与 NPT 共用 */
+  _scaleBox(fx, fy, fz) {
+    this.Lx *= fx; this.Ly *= fy; this.Lz *= fz;
+    this.density = this.N / (this.Lx * this.Ly * this.Lz);
+    for (let a = 0; a < this.pos.length; a += 3) {
+      this.pos[a] *= fx; this.pos[a + 1] *= fy; this.pos[a + 2] *= fz;
+      this.upos[a] *= fx; this.upos[a + 1] *= fy; this.upos[a + 2] *= fz;
     }
     this._allocCells();
   }
 
-  /** 邻域平滑迁移率：每珠取 2σ 邻域内位移平方的均值（χ₄ 视角逐珠可视化） */
+  /** 每步形变：单轴拉伸 / 循环 / LE 剪切（在漂移后、元胞重建前调用） */
+  _deformStep() {
+    const d = this.deform;
+    if (d.mode === 'stretch') {
+      if (d.target != null && d.strain >= d.target) {
+        const back = d.target - d.strain;
+        this._scaleBox(Math.exp(back), Math.exp(-back / 2), Math.exp(-back / 2));
+        d.strain = d.target;
+        d.mode = 'none';
+        return;
+      }
+      const f = Math.exp(d.rate * this.dt);
+      this._scaleBox(f, 1 / Math.sqrt(f), 1 / Math.sqrt(f));
+      d.strain += d.rate * this.dt;
+    } else if (d.mode === 'cyclic') {
+      d.phase += 2 * Math.PI * d.freq * this.dt;
+      const eps = d.amp * Math.sin(d.phase);
+      this._scaleBox((1 + eps) / (1 + d.epsCur), Math.sqrt((1 + d.epsCur) / (1 + eps)), Math.sqrt((1 + d.epsCur) / (1 + eps)));
+      d.epsCur = eps;
+    }
+  }
+
+  /**
+   * Steinhardt |q₆|（逐珠，1.4σ 邻域）：晶体序指标
+   * 返回 { q6: Float32Array(N), mean: 全局平均 }
+   */
+  q6PerBead() {
+    const N = this.N, p = this.pos;
+    const rc = 1.4, rc2 = rc * rc;
+    const C = new Float64Array(7 * N), S = new Float64Array(7 * N);
+    const cnt = new Int32Array(N);
+    this._buildCells();
+    const Lx = this.Lx, Ly = this.Ly, Lz = this.Lz;
+    // l=6 复球谐归一化系数（m ≥ 0）
+    const NRM = new Float64Array(7);
+    for (let m = 0; m <= 6; m++) {
+      NRM[m] = Math.sqrt((13 / (4 * Math.PI)) * NFAC[6 - m] / NFAC[6 + m]);
+    }
+    for (let i = 0; i < N; i++) {
+      const i3 = i * 3;
+      const xi = p[i3], yi = p[i3 + 1], zi = p[i3 + 2];
+      let cx = (xi / Lx * this.ncx) | 0, cy = (yi / this.Ly * this.ncy) | 0, cz = (zi / this.Lz * this.ncz) | 0;
+      if (cx >= this.ncx) cx = this.ncx - 1;
+      if (cy >= this.ncy) cy = this.ncy - 1;
+      if (cz >= this.ncz) cz = this.ncz - 1;
+      for (let oz = -1; oz <= 1; oz++) {
+        let z2 = cz + oz; if (z2 < 0) z2 += this.ncz; else if (z2 >= this.ncz) z2 -= this.ncz;
+        for (let oy = -1; oy <= 1; oy++) {
+          let y2 = cy + oy; if (y2 < 0) y2 += this.ncy; else if (y2 >= this.ncy) y2 -= this.ncy;
+          for (let ox = -1; ox <= 1; ox++) {
+            let x2 = cx + ox; if (x2 < 0) x2 += this.ncx; else if (x2 >= this.ncx) x2 -= this.ncx;
+            let j = this.cellHead[x2 + this.ncx * (y2 + this.ncy * z2)];
+            while (j !== -1) {
+              if (j > i) {
+                const j3 = j * 3;
+                let dx = xi - p[j3];     dx -= Lx * Math.round(dx / Lx);
+                let dy = yi - p[j3 + 1]; dy -= Ly * Math.round(dy / Ly);
+                let dz = zi - p[j3 + 2]; dz -= Lz * Math.round(dz / Lz);
+                const r2 = dx * dx + dy * dy + dz * dz;
+                if (r2 < rc2 && r2 > 1e-12) {
+                  const inv = 1 / Math.sqrt(r2);
+                  const ct = Math.min(1, Math.max(-1, dz * inv));
+                  const st = Math.sqrt(Math.max(0, 1 - ct * ct));
+                  const phi = Math.atan2(dy, dx);
+                  for (let m = 0; m <= 6; m++) {
+                    const y6c = NRM[m] * pl6m(m, ct) * Math.cos(m * phi);
+                    const y6s = NRM[m] * pl6m(m, ct) * Math.sin(m * phi);
+                    C[m * N + i] += y6c; S[m * N + i] += y6s;
+                    C[m * N + j] += y6c; S[m * N + j] += y6s;
+                    cnt[i]++; cnt[j]++;
+                  }
+                }
+              }
+              j = this.cellNext[j];
+            }
+          }
+        }
+      }
+    }
+    const q6 = new Float32Array(N);
+    let mean = 0;
+    const norm = Math.sqrt(4 * Math.PI / 13);
+    for (let i = 0; i < N; i++) {
+      const n_i = Math.max(1, cnt[i]);
+      let acc = 0;
+      for (let m = 0; m <= 6; m++) {
+        const cr = C[m * N + i] / n_i, ci = S[m * N + i] / n_i;
+        acc += (m === 0 ? 1 : 2) * (cr * cr + ci * ci);
+      }
+      const w = m === 0 ? 1 : 2;
+      q6[i] = Math.sqrt(Math.max(0, norm * acc));
+      mean += q6[i];
+    }
+    mean /= N;
+    return { q6, mean };
+  }
+
+  /** 邻域平滑迁移率：每珠取 2σ 邻域内位移平方的均值（χ₄ 视角逐珠可视化） */  /** 邻域平滑迁移率：每珠取 2σ 邻域内位移平方的均值（χ₄ 视角逐珠可视化） */  /** 邻域平滑迁移率：每珠取 2σ 邻域内位移平方的均值（χ₄ 视角逐珠可视化） */
   smoothMobility() {
     const N = this.N;
     const p = this.pos, u = this.upos, sm = this.snapMob;
@@ -508,7 +617,16 @@ export class KGSim {
   /** 瞬时压强（理想项 + 维里项），LJ 约化单位 */
   get pressure() {
     const V = this.Lx * this.Ly * this.Lz;
-    return (this.N * this.keTemp + this.virial) / (3 * V);
+    return (this.N * this.keTemp + (this.wxx + this.wyy + this.wzz) / 3) / (3 * V);
+  }
+
+  /** 偏应力（单轴用）与剪切应力（LE 用） */
+  get stressDev() {
+    const V = this.Lx * this.Ly * this.Lz;
+    return (this.N * this.keTemp + this.wxx - 0.5 * (this.wyy + this.wzz)) / V;
+  }
+  get stressXY() {
+    return this.wxy / (this.Lx * this.Ly * this.Lz);
   }
 
   /**

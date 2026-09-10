@@ -38,6 +38,9 @@ const state = {
   showBonds: true,
   colorMode: 'mobility',
   perf: { fps: 0 },
+  defRate: 0.02,
+  defAmp: 0.12,
+  defFreq: 0.5,
 };
 
 let renderer = null;
@@ -103,6 +106,7 @@ worker.onmessage = (e) => {
       view.pos = new Float32Array(m.pos);
       view.chi = m.chi ? new Float32Array(m.chi) : view.chi;
       view.mob = m.mob ? new Float32Array(m.mob) : view.mob;
+      if (m.vhBins) { view.vhBins = new Float32Array(m.vhBins); view.vhMax = m.vhMax; view.vhN = m.vhN; }
       view.density = m.stats.density;
       updateStats(m.stats);
       if (renderer) {
@@ -121,10 +125,15 @@ worker.onmessage = (e) => {
         });
       }
       if (frameNo % 4 === 0) drawA2Plot($('a2Plot'), view.a2Pts);
+      if (frameNo % 4 === 2) drawStressPlot($('stressPlot'), view.stressPts);
+      if (frameNo % 4 === 3) drawVHPlot($('vhPlot'), view.vhBins, view.vhMax, view.msdPts);
+      if (frameNo % 4 === 1) drawProtoPlot($('protoPlot'), view.protoPts);
       frameNo++;
       break;
     }
     case 'samples': {
+      view.stressPts = m.stressPts || [];
+      view.protoPts = m.protoPts || [];
       view.msdPts = m.msdPts;
       view.a2Pts = m.a2Pts;
       view.ghosts = m.ghosts;
@@ -361,6 +370,43 @@ function bindUI() {
     else if (e.key === 'h') $('btnMelt').click();
   });
 
+  const defModeSel = $('defModeSel');
+  defModeSel.addEventListener('change', (e) => {
+    const mode = e.target.value;
+    wsend({ cmd: 'deform', mode, rate: state.defRate, amp: state.defAmp, freq: state.defFreq });
+    const grp = document.getElementById('defRateGroup');
+    if (grp) grp.hidden = mode === 'none';
+    const grp2 = document.getElementById('defCycGroup');
+    if (grp2) grp2.hidden = mode !== 'cyclic';
+  });
+  $('defRateSlider').addEventListener('input', (e) => {
+    state.defRate = parseFloat(e.target.value);
+    $('defRateVal').textContent = state.defRate.toFixed(3);
+    wsend({ cmd: 'deform', mode: defModeSel.value, rate: state.defRate, amp: state.defAmp, freq: state.defFreq });
+  });
+  $('defAmpSlider').addEventListener('input', (e) => {
+    state.defAmp = parseFloat(e.target.value);
+    $('defAmpVal').textContent = state.defAmp.toFixed(2);
+    wsend({ cmd: 'deform', mode: defModeSel.value, rate: state.defRate, amp: state.defAmp, freq: state.defFreq });
+  });
+  $('defFreqSlider').addEventListener('input', (e) => {
+    state.defFreq = parseFloat(e.target.value);
+    $('defFreqVal').textContent = state.defFreq.toFixed(2);
+    wsend({ cmd: 'deform', mode: defModeSel.value, rate: state.defRate, amp: state.defAmp, freq: state.defFreq });
+  });
+  $('btnRelease').addEventListener('click', () => wsend({ cmd: 'deform-release' }));
+  $('btnProto').addEventListener('click', () => {
+    const seq = $('protoSeq').value.split(',').map((p2) => p2.trim().split(/\s+/)).filter((p2) => p2.length === 2)
+      .map((p2) => ({ T: Math.min(1.5, Math.max(0.05, parseFloat(p2[0]))), dur: Math.round(parseFloat(p2[1]) * 125) }));
+    if (seq.length) wsend({ cmd: 'protocol', seq });
+    const psEl = $('protoState');
+    if (psEl) psEl.textContent = '运行中';
+  });
+  $('btnProtoStop').addEventListener('click', () => {
+    wsend({ cmd: 'protocol-stop' });
+    const psEl = $('protoState');
+    if (psEl) psEl.textContent = '';
+  });
   $('btnCsv').addEventListener('click', exportCsv);
   $('btnJson').addEventListener('click', exportJson);
 }
@@ -415,6 +461,8 @@ function exportJson() {
     },
     msdTau: { refT: view.refT, pts: view.msdPts },
     nongaussianA2: view.a2Pts,
+    stressResponse: view.stressPts,
+    memoryProtocol: view.protoPts,
     thermalHistory: view.history,
   };
   download('polymer-glass-' + stamp() + '.json', JSON.stringify(data, null, 2), 'application/json');

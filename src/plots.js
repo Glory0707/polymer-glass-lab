@@ -350,3 +350,144 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
     }
   }
 }
+
+/**
+ * 力学响应图：单轴/循环为 σ–ε，剪切为 σ–t
+ */
+export function drawStressPlot(canvas, pts) {
+  const g = prep(canvas);
+  if (!g) return;
+  const { ctx, w, h } = g;
+  const m = { l: 44, r: 12, t: 12, b: 26 };
+  const pw = w - m.l - m.r, ph = h - m.t - m.b;
+  const font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+
+  if (!pts || pts.length < 2) {
+    ctx.fillStyle = 'rgba(233,235,242,0.35)';
+    ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('在力学面板选模式后采样', m.l + pw / 2, m.t + ph / 2);
+    return;
+  }
+  let xlo = Infinity, xhi = -Infinity, ylo = Infinity, yhi = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < xlo) xlo = x; if (x > xhi) xhi = x;
+    if (y < ylo) ylo = y; if (y > yhi) yhi = y;
+  }
+  const X = (x) => m.l + (x - xlo) / (xhi - xlo || 1) * pw;
+  const Y = (y) => m.t + (1 - (y - ylo) / (yhi - ylo || 1)) * ph;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath(); ctx.moveTo(m.l, Y(0)); ctx.lineTo(m.l + pw, Y(0)); ctx.stroke();
+
+  ctx.strokeStyle = '#f2f4fa';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(X(x), Y(y)) : ctx.lineTo(X(x), Y(y))));
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(233,235,242,0.45)';
+  ctx.font = font;
+  ctx.textAlign = 'left';
+  ctx.fillText(xlo.toFixed(2), m.l + 2, h - m.b + 16);
+  ctx.textAlign = 'right';
+  ctx.fillText(xhi.toFixed(2), m.l + pw - 2, h - m.b + 16);
+}
+
+/**
+ * 记忆实验：PE(t) 白线 + T(t) 琥珀线（右轴）
+ */
+export function drawProtoPlot(canvas, pts) {
+  const g = prep(canvas);
+  if (!g) return;
+  const { ctx, w, h } = g;
+  const m = { l: 44, r: 12, t: 12, b: 26 };
+  const pw = w - m.l - m.r, ph = h - m.t - m.b;
+  const font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+
+  if (!pts || pts.length < 2) {
+    ctx.fillStyle = 'rgba(233,235,242,0.35)';
+    ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('在力学面板配置温度阶梯后运行', m.l + pw / 2, m.t + ph / 2);
+    return;
+  }
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
+  const X = (t) => m.l + (t - t0) / (t1 - t0 || 1) * pw;
+  let peLo = Infinity, peHi = -Infinity;
+  for (const [, pe] of pts) { if (pe < peLo) peLo = pe; if (pe > peHi) peHi = pe; }
+  const pad = (peHi - peLo) * 0.15 + 0.01;
+  const Ype = (pe) => m.t + (1 - (pe - (peLo - pad)) / (peHi - peLo + 2 * pad)) * ph;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath(); ctx.moveTo(m.l, Ype(0) - 0); ctx.lineTo(m.l + pw, Ype(0)); ctx.stroke();
+
+  ctx.strokeStyle = '#f2f4fa';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  pts.forEach(([t, pe], i) => (i === 0 ? ctx.moveTo(X(t), Ype(pe)) : ctx.lineTo(X(t), Ype(pe))));
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(233,235,242,0.45)';
+  ctx.font = font;
+  ctx.textAlign = 'left';
+  ctx.fillText('PE(t) · PE/ε每珠', m.l + 4, m.t + 10);
+  ctx.textAlign = 'right';
+  ctx.fillText('τ=' + t0.toFixed(0) + '→' + t1.toFixed(0), m.l + pw - 4, m.t + 10);
+}
+
+/**
+ * van Hove 自相关函数 G_s(r, t) 直方图 + 高斯参考线
+ */
+export function drawVHPlot(canvas, vhBins, vhMax, msdEst) {
+  const g = prep(canvas);
+  if (!g) return;
+  const { ctx, w, h } = g;
+  const m = { l: 40, r: 12, t: 12, b: 26 };
+  const pw = w - m.l - m.r, ph = h - m.t - m.b;
+  const font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+
+  if (!vhBins || !vhBins.length) {
+    ctx.fillStyle = 'rgba(233,235,242,0.35)';
+    ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('采样中…', m.l + pw / 2, m.t + ph / 2);
+    return;
+  }
+  const nb = vhBins.length;
+  const dr = vhMax / nb;
+  const maxCount = Math.max(...vhBins) * 1.15 || 1;
+  const Y = (v) => m.t + (1 - v / maxCount) * ph;
+  const X = (r) => m.l + (r / vhMax) * pw;
+
+  const bw = pw / nb;
+  for (let b = 0; b < nb; b++) {
+    const v = vhBins[b];
+    if (v <= 0) continue;
+    const bh = (v / maxCount) * ph;
+    ctx.fillStyle = 'rgba(120, 170, 255, 0.4)';
+    ctx.fillRect(X(b * dr) + 1, m.t + ph - bh, bw - 1, bh);
+  }
+  const msdEst2 = msdEst || 1;
+  ctx.strokeStyle = 'rgba(255,107,94,0.8)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let k = 0; k <= 60; k++) {
+    const r = k / 60 * vhMax;
+    const exp3 = 3 / (2 * Math.PI * msdEst2);
+    const gv = 4 * Math.PI * r * r * Math.pow(exp3, 1.5) * Math.exp(-3 * r * r / (2 * msdEst2));
+    const y = Y(Math.min(gv, maxCount * 1.05));
+    const x = X(r);
+    k === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(233,235,242,0.45)';
+  ctx.font = font;
+  ctx.textAlign = 'left';
+  ctx.fillText('G_s(r)', m.l + 4, m.t + 2);
+  ctx.fillText('r/σ', m.l + pw - 24, h - m.b + 14);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,107,94,0.7)';
+  ctx.fillText('高斯', m.l + pw - 4, m.t + 14);
+}
