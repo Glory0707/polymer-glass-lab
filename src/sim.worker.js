@@ -232,6 +232,17 @@ function schedule() { setTimeout(tick, 1000 / 60); }
 
 function emitFatal(msg) { post({ type: 'fatal', msg }); }
 
+function emitReady() {
+  const sigmaCopy = sim.sigma.slice();
+  const bondCopy = sim.bondPairs.slice();
+  post({
+    type: 'ready',
+    N: sim.N, Lx: sim.Lx, Ly: sim.Ly, Lz: sim.Lz,
+    sigma: sigmaCopy.buffer,
+    bondPairs: bondCopy.buffer,
+  }, [sigmaCopy.buffer, bondCopy.buffer]);
+}
+
 self.onmessage = (e) => {
   const m = e.data;
   try {
