@@ -24,7 +24,6 @@
   <!-- 抬头 -->
   <header id="topbar">
     <span id="mark">Tg</span>
-    <span id="brand">玻璃化转变</span>
     <span class="spacer"></span>
     <nav id="topnav">
       <button id="figsToggle" class="ghostbtn">曲线</button>
@@ -36,7 +35,7 @@
   <div id="hero">
     <h1>玻璃化转变</h1>
     <p id="thesis">把熔体降温，看链段冻成玻璃。</p>
-    <p id="heroSub">POLYMER GLASS TRANSITION · KREMER–GREST MD</p>
+    <p id="heroSub">KREMER–GREST MD</p>
   </div>
 
   <!-- 右上读数：纯 HUD 文字，无框 -->
@@ -61,7 +60,6 @@
 
   <!-- 样品参数浮层 -->
   <div id="paramsPop" class="panel hidden">
-    <div class="kv"><span class="k">样品</span><span class="spacer"></span><span id="sampleInfo" class="mini">60 链 × 40 珠</span></div>
     <div class="kv"><span class="k">种子</span><span class="spacer"></span><span id="seedVal" class="mini mono">—</span></div>
     <div class="kv"><span class="k">规模</span><span class="spacer"></span>
       <select id="sizeSel">
@@ -101,20 +99,19 @@
       <div id="railBand" aria-hidden="true"></div>
       <div id="railBubble">1.00</div>
     </div>
-    <div id="railEnds"><span>0.05 冷</span><span>ε/kB</span><span>1.50 热</span></div>
+    <div id="railEnds"><span>冷 0.05</span><span>1.50 热</span></div>
   </div>
 
   <!-- 曲线浮层 -->
   <aside id="figs" class="panel">
     <button id="figsClose" class="pill" aria-label="关闭">×</button>
     <figure>
-      <figcaption><span>图 1 · 均方位移</span><span class="mini">斜率1=扩散 · 平台=笼效应</span></figcaption>
+      <figcaption><span>均方位移</span><span class="mini">MSD–τ</span></figcaption>
       <canvas id="msdPlot"></canvas>
     </figure>
     <figure>
-      <figcaption><span>图 2 · 热历史</span><span class="mini">折点即 Tg · 慢扫更低</span></figcaption>
+      <figcaption><span>热历史</span><span class="mini">折点即 Tg</span></figcaption>
       <canvas id="histPlot"></canvas>
-      <p class="mini">白线 MSD@20τ，橙线 势能/珠。「降温」扫一遍，两段折线交点即 Tg。</p>
     </figure>
     <details>
       <summary>物理</summary>
@@ -139,6 +136,6 @@
       if (el) { el.textContent = msg; document.getElementById('fatal').hidden = false; }
     }, true);
   </script>
-  <script type="module" src="./src/main.js?v=8"></script>
+  <script type="module" src="./src/main.js?v=9"></script>
 </body>
 </html>

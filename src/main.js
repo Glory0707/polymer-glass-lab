@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=8';
-import { GlassRenderer } from './renderer.js?v=8';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=8';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, VIRIDIS_LUT } from './analysis.js?v=8';
+import { KGSim } from './md.js?v=9';
+import { GlassRenderer } from './renderer.js?v=9';
+import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=9';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, VIRIDIS_LUT } from './analysis.js?v=9';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -55,11 +55,6 @@ function rebuild({ newSeed = false, keepT = true } = {}) {
   state.annealLeft = 4000;
   $('anneal').hidden = false;
   state.renderer = new GlassRenderer($('viewport'), state.sim);
-  const sampleEl = $('sampleInfo');
-  if (sampleEl) {
-    sampleEl.textContent =
-      `${state.sim.numChains} 链 × ${state.sim.chainLen} 珠 · ρ = 1.0`;
-  }
   syncSliderToSim();
 
   // 链分色查找表（金角分布色相，预先线性化）
