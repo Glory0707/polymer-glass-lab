@@ -8,8 +8,8 @@
  *                   |'protocol'|'protocol-stop'}
  *   worker → main: {type:'ready'|'anneal'|'frame'|'samples'|'proto-done'|'fatal'}
  */
-import { KGSim } from './md.js?v=21';
-import { binByT, twoSegmentFit } from './analysis.js?v=21';
+import { KGSim } from './md.js?v=22';
+import { binByT, twoSegmentFit } from './analysis.js?v=22';
 
 let sim = null;
 const cfg = {
