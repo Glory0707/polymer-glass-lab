@@ -2,14 +2,14 @@
  * main.js — 渲染、HUD 与 UI 接线
  * MD 内核运行在 Web Worker（sim.worker.js），本线程只做渲染与交互。
  */
-import { GlassRenderer } from './renderer.js?v=30';
-import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot } from './plots.js?v=30';
-import { THERMAL_LUT } from './analysis.js?v=30';
+import { GlassRenderer } from './renderer.js?v=32';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot } from './plots.js?v=32';
+import { THERMAL_LUT } from './analysis.js?v=32';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
 
-const worker = new Worker(new URL('./sim.worker.js?v=30', import.meta.url), { type: 'module' });
+const worker = new Worker(new URL('./sim.worker.js?v=32', import.meta.url), { type: 'module' });
 
 /* 渲染所需的场景镜像（由 worker 消息填充） */
 const view = {
@@ -396,14 +396,21 @@ function bindUI() {
   });
 
   const defModeSel = $('defModeSel');
+  const syncDefGroups = (mode) => {
+    const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
+    show('defRateGroup', mode !== 'none');
+    show('defRateSlider', mode !== 'none');
+    show('defCycGroup', mode === 'cyclic');
+    show('defAmpSlider', mode === 'cyclic');
+    show('defFreqGroup', mode === 'cyclic');
+    show('defFreqSlider', mode === 'cyclic');
+  };
   defModeSel.addEventListener('change', (e) => {
     const mode = e.target.value;
     wsend({ cmd: 'deform', mode, rate: state.defRate, amp: state.defAmp, freq: state.defFreq });
-    const grp = document.getElementById('defRateGroup');
-    if (grp) grp.hidden = mode === 'none';
-    const grp2 = document.getElementById('defCycGroup');
-    if (grp2) grp2.hidden = mode !== 'cyclic';
+    syncDefGroups(mode);
   });
+  syncDefGroups(defModeSel.value);
   $('defRateSlider').addEventListener('input', (e) => {
     state.defRate = parseFloat(e.target.value);
     $('defRateVal').textContent = state.defRate.toFixed(3);
