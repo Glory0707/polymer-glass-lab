@@ -8,8 +8,8 @@
  *                   |'protocol'|'protocol-stop'}
  *   worker → main: {type:'ready'|'anneal'|'anneal-done'|'frame'|'samples'|'proto-done'|'fatal'}
  */
-import { KGSim } from './md.js?v=26';
-import { binByT, twoSegmentFit } from './analysis.js?v=26';
+import { KGSim } from './md.js?v=30';
+import { binByT, twoSegmentFit } from './analysis.js?v=30';
 
 let sim = null;
 const cfg = {
@@ -41,6 +41,7 @@ function archive() {
   sim.resetRef();
   refT = sim.T;
   msdPts = [];
+  a2Pts = []; // α₂ 与 MSD 同窗口同参考，必须一起清，否则多温度段拼成乱线
   nextSampleStep = 8;
 }
 
@@ -74,7 +75,9 @@ function sampleStress() {
     stressPts.push([sim.deform.gamma, emaXY]);
   } else {
     emaDev += (sim.stressDev - emaDev) * ema;
-    stressPts.push([sim.deform.strain, emaDev]);
+    // 循环模式的应变是 epsCur（strain 只累计单轴拉伸）
+    const eps = cfg.deform.mode === 'cyclic' ? sim.deform.epsCur : sim.deform.strain;
+    stressPts.push([eps, emaDev]);
   }
   if (stressPts.length > 500) stressPts.shift();
 }
@@ -203,6 +206,7 @@ function pushFrame() {
       tau: sim.time, T: sim.T, Tmeas: sim.keTemp,
       pe: sim.pePerBead, msd: meanD2,
       density: sim.density, strain: sim.deform.strain,
+      Lx: sim.Lx, Ly: sim.Ly, Lz: sim.Lz,
       stressDev: emaDev, stressXY: emaXY,
       deformMode: cfg.deform.mode, deformGamma: sim.deform.gamma,
     },
@@ -275,7 +279,7 @@ self.onmessage = (e) => {
       case 'rate': cfg.rate = m.v; break;
       case 'temp': sim.T = m.T; break;
       case 'archive': archive(); break;
-      case 'reset-ref': sim.resetRef(); msdPts = []; nextSampleStep = 8; break;
+      case 'reset-ref': sim.resetRef(); msdPts = []; a2Pts = []; nextSampleStep = 8; break;
       case 'stiffness': sim.stiffness = m.v; break;
       case 'npt': sim.npt = m.v; sim.targetP = m.p0; break;
       case 'density-target': cfg.densityTarget = m.v; break;

@@ -179,6 +179,33 @@ export class GlassRenderer {
     this.controls.target.copy(this._center);
   }
 
+  /** 密度调整/NPT 使盒子尺寸变化：重建取景括号并重新取景（视角方向不变） */
+  setBoxDims(Lx, Ly, Lz) {
+    const sim = this.sim;
+    sim.Lx = Lx; sim.Ly = Ly; sim.Lz = Lz;
+    const hw = Lx / 2, hh = Ly / 2, hd = Lz / 2;
+    const k = 0.9;
+    const arr = this.boxHelper.geometry.attributes.position.array;
+    let w = 0;
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const bx = sx * hw, by = sy * hh, bz = sz * hd;
+          arr[w++] = bx; arr[w++] = by; arr[w++] = bz;
+          arr[w++] = bx - sx * k; arr[w++] = by; arr[w++] = bz;
+          arr[w++] = bx; arr[w++] = by; arr[w++] = bz;
+          arr[w++] = bx; arr[w++] = by - sy * k; arr[w++] = bz;
+          arr[w++] = bx; arr[w++] = by; arr[w++] = bz;
+          arr[w++] = bx; arr[w++] = by; arr[w++] = bz - sz * k;
+        }
+      }
+    }
+    this.boxHelper.geometry.attributes.position.needsUpdate = true;
+    this._center.set(Lx / 2, Ly / 2, Lz / 2);
+    this.boxHelper.position.copy(this._center);
+    this._refitDistance();
+  }
+
   _resize() {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;

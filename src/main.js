@@ -2,14 +2,14 @@
  * main.js — 渲染、HUD 与 UI 接线
  * MD 内核运行在 Web Worker（sim.worker.js），本线程只做渲染与交互。
  */
-import { GlassRenderer } from './renderer.js?v=26';
-import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot } from './plots.js?v=26';
-import { THERMAL_LUT } from './analysis.js?v=26';
+import { GlassRenderer } from './renderer.js?v=30';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot } from './plots.js?v=30';
+import { THERMAL_LUT } from './analysis.js?v=30';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
 
-const worker = new Worker(new URL('./sim.worker.js?v=26', import.meta.url), { type: 'module' });
+const worker = new Worker(new URL('./sim.worker.js?v=30', import.meta.url), { type: 'module' });
 
 /* 渲染所需的场景镜像（由 worker 消息填充） */
 const view = {
@@ -116,6 +116,11 @@ worker.onmessage = (e) => {
       view.mob = m.mob ? new Float32Array(m.mob) : view.mob;
       if (m.vhBins) { view.vhBins = new Float32Array(m.vhBins); view.vhMax = m.vhMax; view.vhN = m.vhN; }
       view.density = m.stats.density;
+      // 盒子尺寸变化（密度调整/NPT）：同步括号框与键镜像基准
+      if (renderer && (Math.abs(m.stats.Lx - view.Lx) > 1e-6 || Math.abs(m.stats.Ly - view.Ly) > 1e-6 || Math.abs(m.stats.Lz - view.Lz) > 1e-6)) {
+        view.Lx = m.stats.Lx; view.Ly = m.stats.Ly; view.Lz = m.stats.Lz;
+        renderer.setBoxDims(view.Lx, view.Ly, view.Lz);
+      }
       updateStats(m.stats);
       if (renderer) {
         updateColors();
@@ -317,6 +322,11 @@ function bindUI() {
     state.speed = parseInt(e.target.value, 10);
     $('speedVal').textContent = String(state.speed);
     wsend({ cmd: 'speed', v: state.speed });
+  });
+
+  $('sizeSel').addEventListener('change', (e) => {
+    state.numChains = parseInt(e.target.value, 10);
+    sendRebuild();
   });
 
   $('compSel').addEventListener('change', (e) => {
