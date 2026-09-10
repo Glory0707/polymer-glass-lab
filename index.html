@@ -6,7 +6,7 @@
   <title>玻璃化转变 · 一场降温实验</title>
   <meta name="description" content="把熔体降温，看链段冻进玻璃：Kremer–Grest 珠簧模型的实时分子动力学，浏览器里跑。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23131a26'/><text x='5' y='23' font-family='Georgia,serif' font-weight='700' font-size='17' fill='%23e8a33d'>Tg</text></svg>" />
-  <link rel="stylesheet" href="./src/style.css?v=11" />
+  <link rel="stylesheet" href="./src/style.css?v=12" />
   <script type="importmap">
     {
       "imports": {
@@ -34,8 +34,6 @@
   <!-- 主标题：电影标题卡 -->
   <div id="hero">
     <h1>玻璃化转变</h1>
-    <p id="thesis">把熔体降温，看链段冻成玻璃。</p>
-    <p id="heroSub">KREMER–GREST MD</p>
   </div>
 
   <!-- 右上读数：纯 HUD 文字，无框 -->
@@ -106,22 +104,15 @@
   <aside id="figs" class="panel">
     <button id="figsClose" class="pill" aria-label="关闭">×</button>
     <figure>
-      <figcaption><span>均方位移</span><span class="mini">MSD–τ</span></figcaption>
+      <figcaption><span>均方位移</span></figcaption>
       <canvas id="msdPlot"></canvas>
     </figure>
     <figure>
-      <figcaption><span>热历史</span><span class="mini">折点即 Tg</span></figcaption>
+      <figcaption><span>热历史</span></figcaption>
       <canvas id="histPlot"></canvas>
     </figure>
-    <details>
-      <summary>物理</summary>
-      <p>一颗珠子 ≈ 3–5 个单体。非键只有 WCA 排斥，链内 FENE 键（k=30，R₀=1.5σ）；velocity-Verlet + Langevin，ρ=1.0σ⁻³，LJ 约化单位。</p>
-      <p>降温时链段松弛时间超指数增长，来不及松弛即被冻住：MSD 出平台，势能–温度弯折，折点即 Tg。Tg 随降温速率降低——玻璃的定义特征。</p>
-      <p class="dim">Grest &amp; Kremer, JCP 86 (1986) · Kremer &amp; Grest, JCP 92 (1990)。定性演示；定量请用 LAMMPS。</p>
-    </details>
   </aside>
 
-  <div id="intro">拖动旋转 · 滚轮缩放</div>
   <div id="anneal" hidden>制备样品 · 退火 <span id="annealPct">0%</span></div>
 
   <div id="fatal" hidden>
@@ -136,6 +127,6 @@
       if (el) { el.textContent = msg; document.getElementById('fatal').hidden = false; }
     }, true);
   </script>
-  <script type="module" src="./src/main.js?v=9"></script>
+  <script type="module" src="./src/main.js?v=12"></script>
 </body>
 </html>

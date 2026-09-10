@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=10';
-import { GlassRenderer } from './renderer.js?v=10';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=10';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=10';
+import { KGSim } from './md.js?v=12';
+import { GlassRenderer } from './renderer.js?v=12';
+import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=12';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=12';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -373,8 +373,6 @@ function bindUI() {
   $('figsToggle').addEventListener('click', () => $('figs').classList.toggle('open'));
   $('figsClose').addEventListener('click', () => $('figs').classList.remove('open'));
   $('paramsToggle').addEventListener('click', () => $('paramsPop').classList.toggle('hidden'));
-  $('intro').addEventListener('click', () => $('intro').classList.add('gone'));
-  setTimeout(() => $('intro')?.classList.add('gone'), 14000);
 
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
