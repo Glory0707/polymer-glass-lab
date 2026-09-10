@@ -174,7 +174,7 @@ export class GlassRenderer {
   _resize() {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
-    this.renderer.setSize(w, h, false);
+    this.renderer.setSize(w, h); // 同步更新 canvas CSS 尺寸，高分缩放屏不再溢出
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this._refitDistance();

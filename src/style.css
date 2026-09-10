@@ -49,7 +49,7 @@ body {
 
 /* ---- 全屏模拟 ---- */
 #viewport { position: fixed; inset: 0; }
-#viewport canvas { display: block; cursor: grab; }
+#viewport canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #viewport canvas:active { cursor: grabbing; }
 #viewport::after {
   content: '';
