@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js';
-import { GlassRenderer } from './renderer.js';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb } from './analysis.js';
+import { KGSim } from './md.js?v=4';
+import { GlassRenderer } from './renderer.js?v=4';
+import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=4';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb } from './analysis.js?v=4';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -55,6 +55,11 @@ function rebuild({ newSeed = false, keepT = true } = {}) {
   state.annealLeft = 4000;
   $('anneal').hidden = false;
   state.renderer = new GlassRenderer($('viewport'), state.sim);
+  const sampleEl = $('plateSample');
+  if (sampleEl) {
+    sampleEl.childNodes[0].nodeValue =
+      `样品 · ${state.sim.numChains} 链 × ${state.sim.chainLen} 珠 · ρ = 1.0 σ⁻³ · LJ 单位 · 种子 `;
+  }
   syncSliderToSim();
 
   // 链分色查找表（金角分布色相，预先线性化）
@@ -84,8 +89,9 @@ function rebuild({ newSeed = false, keepT = true } = {}) {
 function syncSliderToSim() {
   const T = state.sim.T;
   $('tempSlider').value = String(T);
-  $('tVal').textContent = T.toFixed(2);
-  $('tVal').style.color = tColorCss(T);
+  const v = $('vT');
+  v.textContent = T.toFixed(2);
+  v.style.color = tColorCss(T);
 }
 
 /* ---------------- MSD 曲线采样与幽灵存档 ---------------- */
@@ -118,9 +124,7 @@ function setTemperature(T, { archive = true } = {}) {
   // 拖动中累计漂移过大也先归档一次，避免曲线无法分辨新旧温度
   if (archive && Math.abs(sim.T - sim.refT) > 0.15) archiveGhost();
   sim.T = T;
-  $('tempSlider').value = String(T);
-  $('tVal').textContent = T.toFixed(2);
-  $('tVal').style.color = tColorCss(T);
+  syncSliderToSim();
 }
 
 /* ---------------- 热历史记录与 Tg 拟合 ---------------- */
@@ -298,8 +302,7 @@ function updateStats() {
   $('vPE').textContent = sim.pePerBead.toFixed(2);
   const lastMsd = state.msdPts.length ? state.msdPts[state.msdPts.length - 1][1] : NaN;
   $('vMSD').textContent = isFinite(lastMsd) ? lastMsd.toFixed(2) : '—';
-  $('vTau').textContent = sim.time.toFixed(0);
-  $('vFps').textContent = Math.round(state.perf.fps) + 'fps';
+  $('plateTau').textContent = `τ ${sim.time.toFixed(0)} · ${Math.round(state.perf.fps)}fps`;
 }
 
 function showFatal(err) {
@@ -368,7 +371,7 @@ function bindUI() {
   $('colorSel').addEventListener('change', (e) => { state.colorMode = e.target.value; });
   $('bondsChk').addEventListener('change', (e) => { state.showBonds = e.target.checked; });
 
-  $('panelToggle').addEventListener('click', () => $('panel').classList.toggle('open'));
+  $('panelToggle').addEventListener('click', () => $('figs').classList.toggle('open'));
   $('intro').addEventListener('click', () => $('intro').classList.add('gone'));
   setTimeout(() => $('intro')?.classList.add('gone'), 14000);
 

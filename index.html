@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>玻璃化转变 · Kremer–Grest 实时分子动力学</title>
-  <meta name="description" content="聚合物玻璃化转变的实时分子动力学演示：Kremer–Grest 珠簧模型，降温度过 Tg，看链段冻住、MSD 出平台。" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230c0d10'/><circle cx='16' cy='16' r='7' fill='%23d9a441'/></svg>" />
+  <title>玻璃化转变 · 一场降温实验</title>
+  <meta name="description" content="把熔体降温，看链段冻进玻璃：Kremer–Grest 珠簧模型的实时分子动力学，浏览器里跑。" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23f3f0e8'/><text x='6' y='23' font-family='Georgia,serif' font-weight='700' font-size='18' fill='%231c1b16'>Tg</text></svg>" />
   <link rel="stylesheet" href="./src/style.css" />
   <script type="importmap">
     {
@@ -18,52 +18,54 @@
 </head>
 <body>
   <div id="app">
-    <div id="viewport">
-      <div id="readout">
-        <span class="r"><i>T</i><b id="vT">—</b><em id="vTmeas"></em></span>
-        <span class="r"><i>PE</i><b id="vPE">—</b></span>
-        <span class="r"><i>MSD</i><b id="vMSD">—</b></span>
-        <span class="r"><i>Tg</i><b id="vTg">—</b></span>
-        <span class="r"><i>τ</i><b id="vTau">—</b><em id="vFps"></em></span>
+
+    <!-- 顶栏 -->
+    <header id="head">
+      <div id="mark">Tg</div>
+      <div id="headTitle">
+        <b>玻璃化转变</b>
+        <span>POLYMER GLASS TRANSITION</span>
       </div>
-      <div id="intro">拖动旋转 · 滚轮缩放 · 点「降温」扫过 Tg，看链段冻住</div>
-      <div id="anneal" hidden>制备样品 · 退火 <span id="annealPct">0%</span></div>
-      <button id="panelToggle" aria-label="面板">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2">
-          <path d="M1 3.5h12M1 7h12M1 10.5h12"/>
-        </svg>
-      </button>
-    </div>
+      <span class="spacer"></span>
+      <a id="repoLink" href="https://github.com/Glory0707/polymer-glass-lab" target="_blank" rel="noopener">GitHub</a>
+    </header>
 
-    <aside id="panel">
-      <header id="head">
-        <h1>玻璃化转变</h1>
-        <p class="sub">POLYMER GLASS TRANSITION · KREMER–GREST MD</p>
-      </header>
+    <div id="main">
 
-      <section>
-        <h2>温度 <em id="tVal">1.00</em> <span class="unit">ε/kB</span></h2>
-        <input type="range" id="tempSlider" min="0.05" max="1.5" step="0.01" value="1.0" />
+      <!-- 左：论断 + 关键数字 + 操作 -->
+      <aside id="side">
+        <p id="thesis">把熔体降温，<br/>看链段冻成玻璃。</p>
+
+        <div id="heroT">
+          <b id="vT">—</b>
+          <span class="unit">ε/kB<em id="vTmeas"></em></span>
+        </div>
+
+        <dl id="keys">
+          <div><dt>势能</dt><dd><b id="vPE">—</b> ε/珠</dd></div>
+          <div><dt>MSD</dt><dd><b id="vMSD">—</b> σ²</dd></div>
+          <div class="tg"><dt>Tg</dt><dd><b id="vTg">—</b></dd></div>
+        </dl>
+
         <div id="modeSeg" class="seg">
           <button data-mode="free" class="active">自由</button>
           <button data-mode="cool">降温</button>
           <button data-mode="heat">升温</button>
         </div>
+
         <div class="kv">
           <label for="rateSlider">速率</label>
           <output id="rateVal">1.0×10⁻³</output><span class="unit">ε/τ</span>
         </div>
         <input type="range" id="rateSlider" min="0" max="100" value="43" />
+
         <div class="btns">
           <button id="btnQuench">急冷 0.05</button>
           <button id="btnMelt">熔化 1.5</button>
           <button id="btnPause">暂停</button>
         </div>
-      </section>
 
-      <section>
-        <h2>模拟</h2>
-        <div class="row2">
+        <div class="kv tight">
           <label>规模
             <select id="sizeSel">
               <option value="30">1200</option>
@@ -71,62 +73,91 @@
               <option value="120">4800</option>
             </select>
           </label>
-          <label>速度 <output id="speedVal">16</output></label>
-        </div>
-        <input type="range" id="speedSlider" min="1" max="40" value="16" />
-        <div class="row2">
-          <label>种子 <span id="seedVal" class="mono">—</span></label>
-          <span class="spacer"></span>
-          <button id="btnNew">新样本</button>
-          <button id="btnResetRef">参考点归零</button>
-        </div>
-      </section>
-
-      <section>
-        <h2>显示</h2>
-        <div class="row2">
           <label>珠色
             <select id="colorSel">
               <option value="mobility" selected>迁移率</option>
               <option value="chain">按链</option>
             </select>
           </label>
-          <span class="spacer"></span>
-          <label class="chk"><input type="checkbox" id="bondsChk" checked />键</label>
-          <label class="chk"><input type="checkbox" id="boxChk" checked />盒</label>
         </div>
+        <div class="kv tight">
+          <label>速度 <output id="speedVal">16</output></label>
+          <label class="chk"><input type="checkbox" id="bondsChk" checked />键</label>
+          <label class="chk"><input type="checkbox" id="boxChk" checked />框</label>
+        </div>
+        <input type="range" id="speedSlider" min="1" max="40" value="16" />
+        <div class="kv tight">
+          <button id="btnNew">新样本</button>
+          <button id="btnResetRef">参考点归零</button>
+        </div>
+      </aside>
+
+      <!-- 中：标本板 + 温度轨 -->
+      <section id="stage">
+        <div id="plate">
+          <div id="viewport"></div>
+          <div id="plateCaption">
+            <span id="plateSample">样品 · 60 链 × 40 珠 · ρ = 1.0 σ⁻³ · LJ 单位 · 种子 <b id="seedVal">—</b></span>
+            <span id="plateTau">τ — · —fps</span>
+          </div>
+        </div>
+
+        <div id="rail">
+          <div id="railScale">
+            <i style="left:3.4%">0.1</i>
+            <i class="tg" style="left:24%">Tg≈0.4</i>
+            <i style="left:65.5%">1.0</i>
+          </div>
+          <input type="range" id="tempSlider" min="0.05" max="1.5" step="0.01" value="1.0" aria-label="温度" />
+          <div id="railEnds"><span>0.05</span><span>1.50</span></div>
+        </div>
+
+        <div id="intro">拖动旋转 · 滚轮缩放 · 拉底下温度轨或点「降温」</div>
+        <div id="anneal" hidden>制备样品 · 退火 <span id="annealPct">0%</span></div>
       </section>
 
-      <section class="plot">
-        <h2>均方位移 <em>MSD–τ</em></h2>
-        <canvas id="msdPlot"></canvas>
-        <p class="hint">平台＝笼效应，斜率 1＝扩散。改温度后旧曲线存为幽灵线。</p>
-      </section>
+      <!-- 右：图 1 / 图 2 / 物理 -->
+      <aside id="figs">
+        <figure>
+          <figcaption>图 1 · 均方位移 <em>MSD–τ</em></figcaption>
+          <canvas id="msdPlot"></canvas>
+          <p>斜率 1＝扩散，平台＝笼效应。改温度后旧曲线存为幽灵线。</p>
+        </figure>
+        <figure>
+          <figcaption>图 2 · 热历史 <em>拐点即 Tg</em></figcaption>
+          <canvas id="histPlot"></canvas>
+          <p>白线 MSD@20τ，橙线 势能/珠。「降温」扫一遍，折线交点即 Tg。</p>
+        </figure>
+        <details>
+          <summary>物理</summary>
+          <p>一颗珠子 ≈ 3–5 个单体。非键只有 WCA 排斥，链内 FENE 键（k=30，R₀=1.5σ）；velocity-Verlet + Langevin，ρ=1.0σ⁻³，LJ 约化单位。</p>
+          <p>降温时链段松弛时间超指数增长，来不及松弛即被冻住：MSD 出平台，势能–温度弯折，折点即 Tg。Tg 随降温速率降低——玻璃的定义特征。</p>
+          <p class="dim">Grest &amp; Kremer, JCP 86 (1986) · Kremer &amp; Grest, JCP 92 (1990)。定性演示；定量请用 LAMMPS。</p>
+        </details>
+      </aside>
 
-      <section class="plot">
-        <h2>热历史 <em>拐点即 Tg</em></h2>
-        <canvas id="histPlot"></canvas>
-        <p class="hint">白线 MSD@20τ，橙线 势能/珠。「降温」扫一遍，折线交点即 Tg；扫得越慢越低。</p>
-      </section>
+    </div>
 
-      <details>
-        <summary>物理</summary>
-        <p>一颗珠子 ≈ 3–5 个单体。非键只有 WCA 排斥，链内 FENE 键（k=30，R₀=1.5σ）；velocity-Verlet + Langevin，ρ=1.0σ⁻³，LJ 约化单位。</p>
-        <p>降温时链段松弛时间超指数增长，来不及松弛即被冻住：MSD 出平台，势能–温度弯折，折点即 Tg。Tg 随降温速率降低——这是玻璃的定义特征。</p>
-        <p class="dim">Grest &amp; Kremer, JCP 86 (1986) · Kremer &amp; Grest, JCP 92 (1990)。定性演示；定量工作请用 LAMMPS。</p>
-      </details>
-
-      <footer>
-        <span>零构建 · Three.js · MIT</span>
-        <a id="repoLink" href="https://github.com/Glory0707/polymer-glass-lab" target="_blank" rel="noopener">GitHub</a>
-      </footer>
-    </aside>
+    <button id="panelToggle" aria-label="图表面板">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2">
+        <path d="M1 3.5h12M1 7h12M1 10.5h12"/>
+      </svg>
+    </button>
   </div>
 
   <div id="fatal" hidden>
     <div>出错了：<span id="fatalMsg"></span></div>
   </div>
 
-  <script type="module" src="./src/main.js"></script>
+  <script>
+    // 模块加载失败（CDN 抖动等）发生在 main.js 挂监听之前，这里兜底显示
+    window.addEventListener('error', (e) => {
+      const msg = (e.error && e.error.message) || e.message || '';
+      if (!msg || /ResizeObserver loop/.test(msg)) return;
+      const el = document.getElementById('fatalMsg');
+      if (el) { el.textContent = msg; document.getElementById('fatal').hidden = false; }
+    }, true);
+  </script>
+  <script type="module" src="./src/main.js?v=4"></script>
 </body>
 </html>
