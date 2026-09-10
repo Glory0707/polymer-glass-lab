@@ -64,6 +64,8 @@ export class KGSim {
     this.T = opts.temperature ?? 1.0;
     // 链刚度 κ：U_bend = κ(1 - cosφ)，φ 为相邻两键夹角（0 = 柔性，越大越挺直）
     this.stiffness = opts.stiffness ?? 0;
+    // 双分散：小珠（σ = 0.7σ₀）占比，增塑效应使 Tg 下移
+    this.smallFrac = opts.smallFrac ?? 0;
     this.seed = (opts.seed ?? 20260910) >>> 0;
 
     this.rng = mulberry32(this.seed);
@@ -155,6 +157,12 @@ export class KGSim {
       }
     }
 
+    // 逐珠尺寸参数 σ（双分散时按 smallFrac 随机指派小珠）
+    this.sigma = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      this.sigma[i] = this.rng() < this.smallFrac ? 0.7 : 1.0;
+    }
+
     // 键表：链内相邻珠子
     const nb = N - this.numChains;
     this.bondPairs = new Int32Array(nb * 2);
@@ -229,16 +237,21 @@ export class KGSim {
                 dy -= Ly * Math.round(dy / Ly);
                 dz -= Lz * Math.round(dz / Lz);
                 const r2 = dx * dx + dy * dy + dz * dz;
-                if (r2 < RC2) {
+                const s2ij = (this.sigma[i] + this.sigma[j]) * 0.5;
+                const rc2ij = 1.2599210498948732 * s2ij * s2ij; // (2^(1/6)·σij)²
+                if (r2 < rc2ij) {
                   const inv2 = 1 / r2;
                   const inv6 = inv2 * inv2 * inv2;
-                  let fc = 24 * (2 * inv6 * inv6 - inv6) * inv2; // WCA
+                  const s6 = s2ij * s2ij * s2ij;
+                  const i6 = s6 * inv6;
+                  const i12 = i6 * i6;
+                  let fc = 24 * (2 * i12 - i6) * inv2; // WCA
                   // 数值护栏：仅在初始化瞬间的深重叠时触发（正常动力学 fc ≲ 100）
                   if (fc > 2e3) fc = 2e3;
                   const fxc = fc * dx, fyc = fc * dy, fzc = fc * dz;
                   f[i3] += fxc; f[i3 + 1] += fyc; f[i3 + 2] += fzc;
                   f[j3] -= fxc; f[j3 + 1] -= fyc; f[j3 + 2] -= fzc;
-                  let uw = 4 * (inv6 * inv6 - inv6) + 1; // 已平移至截断处为零
+                  let uw = 4 * (i12 - i6) + 1; // 已平移至截断处为零
                   if (uw > 2e3) uw = 2e3;
                   pe += uw;
                 }
@@ -406,6 +419,68 @@ export class KGSim {
 
   lagAge() { return (this.stepCount - this.lagAnchor) * this.dt; }
   mobAge() { return (this.stepCount - this.mobAnchor) * this.dt; }
+
+  /**
+   * 调整体系密度：按 f = (ρ_old/ρ_new)^(1/3) 等比缩放盒子与全部坐标。
+   * 由调用方渐进调用（每帧一小步），避免密度突变冲击体系。
+   */
+  setDensity(rhoNew) {
+    const f = Math.pow(this.density / rhoNew, 1 / 3);
+    this.density = rhoNew;
+    this.Lx *= f; this.Ly *= f; this.Lz *= f;
+    for (let a = 0; a < this.pos.length; a++) {
+      this.pos[a] *= f;
+      this.upos[a] *= f;
+    }
+    this._allocCells();
+  }
+
+  /** 邻域平滑迁移率：每珠取 2σ 邻域内位移平方的均值（χ₄ 视角逐珠可视化） */
+  smoothMobility() {
+    const N = this.N;
+    const p = this.pos, u = this.upos, sm = this.snapMob;
+    const { Lx, Ly, Lz, ncx, ncy, ncz } = this;
+    const m2 = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const dx = u[i * 3] - sm[i * 3], dy = u[i * 3 + 1] - sm[i * 3 + 1], dz = u[i * 3 + 2] - sm[i * 3 + 2];
+      m2[i] = dx * dx + dy * dy + dz * dz;
+    }
+    const out = new Float32Array(N);
+    this._buildCells();
+    const count = new Int32Array(N);
+    for (let i = 0; i < N; i++) {
+      const i3 = i * 3;
+      const xi = p[i3], yi = p[i3 + 1], zi = p[i3 + 2];
+      let cx = (xi / Lx * ncx) | 0, cy = (yi / Ly * ncy) | 0, cz = (zi / Lz * ncz) | 0;
+      if (cx >= ncx) cx = ncx - 1; if (cy >= ncy) cy = ncy - 1; if (cz >= ncz) cz = ncz - 1;
+      let sum = 0, cnt = 0;
+      for (let oz = -1; oz <= 1; oz++) {
+        let z2 = cz + oz; if (z2 < 0) z2 += ncz; else if (z2 >= ncz) z2 -= ncz;
+        for (let oy = -1; oy <= 1; oy++) {
+          let y2 = cy + oy; if (y2 < 0) y2 += ncy; else if (y2 >= ncy) y2 -= ncy;
+          for (let ox = -1; ox <= 1; ox++) {
+            let x2 = cx + ox; if (x2 < 0) x2 += ncx; else if (x2 >= ncx) x2 -= ncx;
+            let j = this.cellHead[x2 + ncx * (y2 + ncy * z2)];
+            while (j !== -1) {
+              if (j !== i) {
+                const j3 = j * 3;
+                let dx = xi - p[j3];     dx -= Lx * Math.round(dx / Lx);
+                let dy = yi - p[j3 + 1]; dy -= Ly * Math.round(dy / Ly);
+                let dz = zi - p[j3 + 2]; dz -= Lz * Math.round(dz / Lz);
+                if (dx * dx + dy * dy + dz * dz < 4.0) { // 2σ 邻域
+                  sum += m2[j];
+                  cnt++;
+                }
+              }
+              j = this.cellNext[j];
+            }
+          }
+        }
+      }
+      out[i] = cnt ? sum / cnt : m2[i];
+    }
+    return out;
+  }
 
   /** 非折叠坐标快照（配合 msdOver 做自定义窗口的 MSD 测量） */
   snapshotU() { return this.upos.slice(); }

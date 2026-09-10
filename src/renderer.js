@@ -134,9 +134,14 @@ export class GlassRenderer {
     const p = sim.pos;
     const m = this._m;
     const mesh = this.beadMesh;
+    const sig = sim.sigma;
     for (let i = 0; i < sim.N; i++) {
       const i3 = i * 3;
-      m.makeTranslation(p[i3], p[i3 + 1], p[i3 + 2]);
+      const s = sig ? sig[i] : 1;
+      m.makeScale(s, s, s);
+      m.elements[12] = p[i3];
+      m.elements[13] = p[i3 + 1];
+      m.elements[14] = p[i3 + 2];
       mesh.setMatrixAt(i, m);
     }
     mesh.instanceMatrix.needsUpdate = true;

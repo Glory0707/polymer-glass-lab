@@ -6,7 +6,7 @@
   <title>玻璃化转变 · 一场降温实验</title>
   <meta name="description" content="把熔体降温，看链段冻进玻璃：Kremer–Grest 珠簧模型的实时分子动力学，浏览器里跑。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23131a26'/><text x='5' y='23' font-family='Georgia,serif' font-weight='700' font-size='17' fill='%23e8a33d'>Tg</text></svg>" />
-  <link rel="stylesheet" href="./src/style.css?v=17" />
+  <link rel="stylesheet" href="./src/style.css?v=18" />
   <script type="importmap">
     {
       "imports": {
@@ -67,6 +67,15 @@
           <option value="120">4800 珠</option>
         </select>
       </div>
+      <div class="kv"><span class="k">组分</span><span class="spacer"></span>
+        <select id="compSel">
+          <option value="0" selected>单分散</option>
+          <option value="0.1">10% 小珠</option>
+          <option value="0.25">25% 小珠</option>
+        </select>
+      </div>
+      <div class="kv"><span class="k">密度</span><span class="spacer"></span><output id="densityVal">1.00</output><span class="unit">σ⁻³</span></div>
+      <input type="range" id="densitySlider" min="0.6" max="1.3" step="0.01" value="1.0" />
       <div class="kv"><span class="k">种子</span><span class="spacer"></span><span id="seedVal" class="mini mono">—</span>
         <button id="btnNew" class="pill mini-pill">新样本</button>
       </div>
@@ -87,6 +96,7 @@
         <select id="colorSel">
           <option value="mobility" selected>迁移率</option>
           <option value="chain">按链</option>
+          <option value="chi">非均匀性</option>
         </select>
       </div>
       <div class="kv"><span class="k">叠加</span><span class="spacer"></span>
@@ -147,6 +157,6 @@
       if (el) { el.textContent = msg; document.getElementById('fatal').hidden = false; }
     }, true);
   </script>
-  <script type="module" src="./src/main.js?v=17"></script>
+  <script type="module" src="./src/main.js?v=18"></script>
 </body>
 </html>

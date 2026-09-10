@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=17';
-import { GlassRenderer } from './renderer.js?v=17';
-import { drawMSDPlot, drawHistoryPlot, drawA2Plot } from './plots.js?v=17';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=17';
+import { KGSim } from './md.js?v=18';
+import { GlassRenderer } from './renderer.js?v=18';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot } from './plots.js?v=18';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=18';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -24,6 +24,10 @@ const state = {
   msdPts: [],
   a2Pts: [],
   stiffness: 0,
+  smallFrac: 0,
+  densityTarget: null,
+  chiCache: null,
+  chiFrame: -999,
   ghosts: [],
   nextSampleStep: 8,
   // 热历史
@@ -52,8 +56,10 @@ function rebuild({ newSeed = false, keepT = true } = {}) {
     chainLen: 40,
     seed: state.seed,
     temperature: keepT ? Math.min(T_MAX, Math.max(T_MIN, prevT)) : 1.0,
+    smallFrac: state.smallFrac,
     annealSteps: 0, // 浏览器端分帧退火，避免卡死页面
   });
+  state.sim.stiffness = state.stiffness;
   state.annealLeft = 4000;
   $('anneal').hidden = false;
   state.renderer = new GlassRenderer($('viewport'), state.sim);
@@ -196,12 +202,28 @@ function updateColors() {
     ct.set(state.chainColors);
     return;
   }
+  if (state.colorMode === 'chi') {
+    // χ₄ 视角：邻域平滑迁移率的空间非均匀性
+    if (frameNo - state.chiFrame > 10 || !state.chiCache) {
+      state.chiCache = sim.smoothMobility();
+      state.chiFrame = frameNo;
+    }
+    const chi = state.chiCache, lut = THERMAL_LUT;
+    for (let i = 0; i < sim.N; i++) {
+      const x = Math.min(1, Math.max(0, (Math.log10(chi[i] + 1e-9) + 3) / 3.1));
+      const idx = (x * 255) | 0;
+      ct[i * 3] = Math.pow(lut[idx * 3], 2.2);
+      ct[i * 3 + 1] = Math.pow(lut[idx * 3 + 1], 2.2);
+      ct[i * 3 + 2] = Math.pow(lut[idx * 3 + 2], 2.2);
+    }
+    return;
+  }
   if (sim.mobAge() < sim.dt) return; // 窗口尚未建立
   const u = sim.upos, s = sim.snapMob, lut = THERMAL_LUT;
   for (let i3 = 0; i3 < u.length; i3 += 3) {
     const dx = u[i3] - s[i3], dy = u[i3 + 1] - s[i3 + 1], dz = u[i3 + 2] - s[i3 + 2];
     const m2 = dx * dx + dy * dy + dz * dz;
-    // 10^-3 .. 10^0.25 对数映射：viridis 深紫(冻结) → 亮黄(活跃)
+    // 10^-3 .. 10^0.25 对数映射：深钢蓝(冻结) → 冰白 → 琥珀(活跃)
     const x = Math.min(1, Math.max(0, (Math.log10(m2 + 1e-9) + 3) / 3.1));
     const idx = (x * 255) | 0;
     ct[i3] = Math.pow(lut[idx * 3], 2.2);
@@ -246,6 +268,19 @@ function frame(now) {
 
     if (!state.paused) {
       const sim = state.sim;
+      // 密度渐变逼近目标，完成后重置参考点
+      if (state.densityTarget != null) {
+        const remain = Math.log(state.densityTarget / sim.density);
+        if (Math.abs(remain) < 0.004) {
+          sim.setDensity(state.densityTarget);
+          state.densityTarget = null;
+          sim.resetRef();
+          state.nextSampleStep = 8;
+        } else {
+          sim.setDensity(sim.density * Math.exp(remain * 0.1));
+        }
+        $('densityVal').textContent = sim.density.toFixed(2);
+      }
       const n = state.speed;
       for (let s = 0; s < n; s++) {
         if (state.mode === 'cool') {
@@ -380,6 +415,13 @@ function bindUI() {
   $('sizeSel').addEventListener('change', (e) => {
     state.numChains = parseInt(e.target.value, 10);
     rebuild();
+  });
+  $('compSel').addEventListener('change', (e) => {
+    state.smallFrac = parseFloat(e.target.value);
+    rebuild();
+  });
+  $('densitySlider').addEventListener('input', (e) => {
+    state.densityTarget = parseFloat(e.target.value);
   });
   $('btnNew').addEventListener('click', () => rebuild({ newSeed: true }));
   $('btnResetRef').addEventListener('click', () => archiveGhost());

@@ -105,6 +105,21 @@ for (let i = 0; i < 2500; i++) {
 sim.gamma = 1;
 check('刚度开启 NVE 能量守恒', maxDrift < 0.05, `最大漂移 ${maxDrift.toFixed(4)} ε/珠`);
 
+// 双分散组分 + 密度调整 + χ₄ 视角数据：稳定性抽查（κ=4 沿用）
+{
+  const b = new KGSim({ numChains: 10, chainLen: 40, seed: 11, temperature: 1.0, density: 1.0, smallFrac: 0.25, stiffness: 4 });
+  b.run(6000);
+  const okB = Number.isFinite(b.pePerBead) && b.maxBondLength() < 1.4;
+  b.setDensity(1.2); b.run(4000);
+  const okD = Number.isFinite(b.pePerBead) && Math.abs(b.density - 1.2) < 1e-9 && b.maxBondLength() < 1.4;
+  const chi = b.smoothMobility();
+  let okC = true;
+  for (const v of chi) if (!Number.isFinite(v)) okC = false;
+  check('双分散体系稳定（25% 小珠, κ=4）', okB, `PE=${b.pePerBead.toFixed(2)} maxBond=${b.maxBondLength().toFixed(3)}`);
+  check('密度调整稳定（ρ→1.2）', okD, `PE=${b.pePerBead.toFixed(2)} ρ=${b.density.toFixed(3)}`);
+  check('χ₄ 视角邻域迁移率有限', okC, `${chi.length} 珠全有限`);
+}
+
 const bins = binByT(history, 0.1, 0, 1.6, 1);
 const fit = twoSegmentFit(bins);
 if (fit) {
