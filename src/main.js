@@ -2,14 +2,14 @@
  * main.js — 渲染、HUD 与 UI 接线
  * MD 内核运行在 Web Worker（sim.worker.js），本线程只做渲染与交互。
  */
-import { GlassRenderer } from './renderer.js?v=19';
-import { drawMSDPlot, drawHistoryPlot, drawA2Plot } from './plots.js?v=19';
-import { THERMAL_LUT } from './analysis.js?v=19';
+import { GlassRenderer } from './renderer.js?v=20';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot } from './plots.js?v=20';
+import { THERMAL_LUT } from './analysis.js?v=20';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
 
-const worker = new Worker(new URL('./sim.worker.js?v=19', import.meta.url), { type: 'module' });
+const worker = new Worker(new URL('./sim.worker.js?v=20', import.meta.url), { type: 'module' });
 
 /* 渲染所需的场景镜像（由 worker 消息填充） */
 const view = {
