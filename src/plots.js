@@ -3,7 +3,16 @@
  *  1) MSD–τ 双对数曲线（当前温度实时 + 历史温度幽灵曲线 + 扩散参考线）
  *  2) 热历史图：固定滞后窗口 MSD 与每珠势能 vs 温度，两段式拟合标注 Tg
  */
-import { tColorCss } from './analysis.js?v=6';
+import { tColorCss, viridis } from './analysis.js?v=8';
+
+/** 曲线用：viridis 提亮，保证深底可读 */
+function curveColor(T, alpha = 1) {
+  const x = Math.min(1, Math.max(0, (T - 0.05) / 1.45));
+  let [r, g, b] = viridis(x);
+  r = r * 0.55 + 0.45; g = g * 0.55 + 0.45; b = b * 0.55 + 0.45;
+  const R = Math.round(r * 255), G = Math.round(g * 255), B = Math.round(b * 255);
+  return alpha >= 1 ? `rgb(${R},${G},${B})` : `rgba(${R},${G},${B},${alpha})`;
+}
 
 function prep(canvas) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -114,20 +123,20 @@ export function drawMSDPlot(canvas, ghosts, active) {
 
   // 幽灵曲线（历史温度）
   for (const c of ghosts) {
-    ctx.strokeStyle = tColorCss(c.T, 0.3);
+    ctx.strokeStyle = curveColor(c.T, 0.3);
     ctx.lineWidth = 1.2;
     poly(ctx, c.pts, X, Y);
   }
 
   // 当前曲线
   if (active && active.pts.length > 1) {
-    ctx.strokeStyle = tColorCss(active.T, 1);
-    ctx.shadowColor = tColorCss(active.T, 0.8);
+    ctx.strokeStyle = curveColor(active.T, 1);
+    ctx.shadowColor = curveColor(active.T, 0.8);
     ctx.shadowBlur = 10;
     ctx.lineWidth = 2.2;
     poly(ctx, active.pts, X, Y);
     const last = active.pts[active.pts.length - 1];
-    ctx.fillStyle = tColorCss(active.T, 1);
+    ctx.fillStyle = curveColor(active.T, 1);
     ctx.beginPath();
     ctx.arc(X(last[0]), Y(last[1]), 2.4 + Math.sin(performance.now() / 280) * 0.9 + 0.9, 0, Math.PI * 2);
     ctx.fill();
@@ -143,7 +152,7 @@ export function drawMSDPlot(canvas, ghosts, active) {
   ctx.fillText('τ (LJ 时间)', w - m.r, h - m.b + 14);
   if (active) {
     ctx.textAlign = 'right';
-    ctx.fillStyle = tColorCss(active.T, 1);
+    ctx.fillStyle = curveColor(active.T, 1);
     ctx.font = 'bold 11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
     ctx.fillText(`T = ${active.T.toFixed(2)}`, w - m.r - 4, m.t + 12);
   }

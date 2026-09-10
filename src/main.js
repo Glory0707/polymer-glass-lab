@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=6';
-import { GlassRenderer } from './renderer.js?v=6';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=6';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb } from './analysis.js?v=6';
+import { KGSim } from './md.js?v=8';
+import { GlassRenderer } from './renderer.js?v=8';
+import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=8';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, VIRIDIS_LUT } from './analysis.js?v=8';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -91,7 +91,7 @@ function syncSliderToSim() {
   $('tempSlider').value = String(T);
   const v = $('vT');
   v.textContent = T.toFixed(2);
-  v.style.color = tColorCss(T);
+  v.style.color = tColorCss(T, 1, 0.35); // 大数字在深底上需要提亮
   const b = $('railBubble');
   if (b) {
     b.style.left = ((T - 0.05) / 1.45 * 100).toFixed(2) + '%';
@@ -194,16 +194,16 @@ function updateColors() {
     return;
   }
   if (sim.mobAge() < sim.dt) return; // 窗口尚未建立
-  const u = sim.upos, s = sim.snapMob;
+  const u = sim.upos, s = sim.snapMob, lut = VIRIDIS_LUT;
   for (let i3 = 0; i3 < u.length; i3 += 3) {
     const dx = u[i3] - s[i3], dy = u[i3 + 1] - s[i3 + 1], dz = u[i3 + 2] - s[i3 + 2];
     const m2 = dx * dx + dy * dy + dz * dz;
-    // 10^-3 .. 10^0.25 对数映射：蓝(冻结) → 红(活跃)
+    // 10^-3 .. 10^0.25 对数映射：viridis 深紫(冻结) → 亮黄(活跃)
     const x = Math.min(1, Math.max(0, (Math.log10(m2 + 1e-9) + 3) / 3.1));
-    hsl2rgb(220 - 210 * x, 0.85, 0.55, _rgb);
-    ct[i3] = Math.pow(_rgb[0], 2.2);
-    ct[i3 + 1] = Math.pow(_rgb[1], 2.2);
-    ct[i3 + 2] = Math.pow(_rgb[2], 2.2);
+    const idx = (x * 255) | 0;
+    ct[i3] = Math.pow(lut[idx * 3], 2.2);
+    ct[i3 + 1] = Math.pow(lut[idx * 3 + 1], 2.2);
+    ct[i3 + 2] = Math.pow(lut[idx * 3 + 2], 2.2);
   }
 }
 

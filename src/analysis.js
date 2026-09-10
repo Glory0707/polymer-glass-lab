@@ -91,11 +91,49 @@ export function twoSegmentFit(bins) {
   };
 }
 
-/** 温度 → CSS 颜色（蓝=冷，红=热），全站统一色标 */
-export function tColorCss(T, alpha = 1) {
+// viridis 五锚点（深紫 → 青 → 亮黄）：暗底友好的科学色标
+const VIRIDIS = [
+  [0.267, 0.005, 0.329],  // #440154
+  [0.231, 0.318, 0.545],  // #3b528b
+  [0.127, 0.569, 0.551],  // #21918c
+  [0.369, 0.789, 0.383],  // #5ec962
+  [0.992, 0.906, 0.145],  // #fde725
+];
+
+/** 归一化 t ∈ [0,1] → viridis RGB（0..1 浮点） */
+export function viridis(t) {
+  t = Math.min(1, Math.max(0, t));
+  const x = t * 4;
+  const i = Math.min(3, Math.floor(x));
+  const f = x - i;
+  const a = VIRIDIS[i], b = VIRIDIS[i + 1];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+
+/** 256 级查找表（珠子逐帧着色用） */
+export const VIRIDIS_LUT = (() => {
+  const lut = new Float32Array(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const [r, g, b] = viridis(i / 255);
+    lut[i * 3] = r; lut[i * 3 + 1] = g; lut[i * 3 + 2] = b;
+  }
+  return lut;
+})();
+
+/**
+ * 温度 → CSS 颜色，全站统一 viridis 色标。
+ * lift: 向白色提亮 0..1（曲线上暗紫色在深底不可读，画线时提 0.45）
+ */
+export function tColorCss(T, alpha = 1, lift = 0) {
   const x = Math.min(1, Math.max(0, (T - 0.05) / 1.45));
-  const h = 220 - 210 * x;
-  return alpha >= 1 ? `hsl(${h.toFixed(0)},85%,58%)` : `hsla(${h.toFixed(0)},85%,58%,${alpha})`;
+  let [r, g, b] = viridis(x);
+  if (lift > 0) {
+    r = r * (1 - lift) + lift;
+    g = g * (1 - lift) + lift;
+    b = b * (1 - lift) + lift;
+  }
+  const R = Math.round(r * 255), G = Math.round(g * 255), B = Math.round(b * 255);
+  return alpha >= 1 ? `rgb(${R},${G},${B})` : `rgba(${R},${G},${B},${alpha})`;
 }
 
 /** hsl → rgb 写入 Float32Array（sRGB，0..1）；着色用 */

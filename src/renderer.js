@@ -21,7 +21,7 @@ export class GlassRenderer {
 
     const hemi = new THREE.HemisphereLight(0x99b7ff, 0x1a2030, 1.25);
     this.scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xfff4e0, 2.6);
+    const key = new THREE.DirectionalLight(0xffffff, 2.6);
     const fill = new THREE.DirectionalLight(0x88aaff, 0.8);
     this.scene.add(key, fill);
     this._key = key; this._fill = fill;
