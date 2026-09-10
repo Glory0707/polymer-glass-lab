@@ -3,7 +3,7 @@
  * MD 内核运行在 Web Worker（sim.worker.js），本线程只做渲染与交互。
  */
 import { GlassRenderer } from './renderer.js?v=21';
-import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot } from './plots.js?v=21';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot } from './plots.js?v=21';
 import { THERMAL_LUT } from './analysis.js?v=21';
 
 const $ = (id) => document.getElementById(id);
