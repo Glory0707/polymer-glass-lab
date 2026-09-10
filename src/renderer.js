@@ -62,15 +62,18 @@ export class GlassRenderer {
   }
 
   /** 颜色缓冲区（sRGB 数值线性化前的 pow2.2 由写入方处理） */
-  get colorTarget() { return this.beadMesh.instanceColor.array; }
+  get colorTarget() {
+    if (!this.beadMesh.instanceColor) return null;
+    return this.beadMesh.instanceColor.array;
+  }
 
   _buildSimObjects(sim) {
     const geo = new THREE.SphereGeometry(BEAD_R, 14, 10);
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.38, metalness: 0.06 });
-    const mesh = new THREE.InstancedMesh(geo, mat, sim.N);
+    const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, sim.N));
     mesh.frustumCulled = false;
     const white = new THREE.Color(0xffffff);
-    for (let i = 0; i < sim.N; i++) mesh.setColorAt(i, white);
+    for (let i = 0; i < Math.max(1, sim.N); i++) mesh.setColorAt(i, white);
     this.beadMesh = mesh;
     this.scene.add(mesh);
 
