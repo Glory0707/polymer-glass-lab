@@ -114,10 +114,10 @@ export function drawMSDPlot(canvas, ghosts, active) {
       ctx.setLineDash([4, 4]);
       poly(ctx, [[0.15, A * 0.15], [maxTau * 1.3, A * maxTau * 1.3]], X, Y);
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.font = '9.5px "IBM Plex Mono", ui-monospace, Consolas, monospace';
       ctx.textAlign = 'left';
-      ctx.fillText('斜率1（扩散）', X(maxTau * 1.3) - 92, Y(A * maxTau * 1.3) + 14);
+      ctx.fillText('斜率 1', X(0.5), Y(A * 0.5) - 7);
     }
   }
 
@@ -151,9 +151,12 @@ export function drawMSDPlot(canvas, ghosts, active) {
   ctx.textAlign = 'right';
   ctx.fillText('τ (LJ 时间)', w - m.r, h - m.b + 14);
   if (active) {
-    ctx.textAlign = 'right';
     ctx.fillStyle = curveColor(active.T, 1);
-    ctx.font = 'bold 11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.beginPath();
+    ctx.arc(w - m.r - 54, m.t + 8, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = '600 10.5px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'right';
     ctx.fillText(`T = ${active.T.toFixed(2)}`, w - m.r - 4, m.t + 12);
   }
 }
@@ -266,14 +269,17 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
   }
 
   // 轴标 + 图例
-  ctx.fillStyle = 'rgba(233,235,242,0.55)';
-  ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+  // 图例：白=MSD@20τ 橙=势能/珠
+  ctx.font = '9.5px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('MSD@20τ', m.l + 6, m.t + 2);
-  ctx.textAlign = 'right';
-  ctx.fillText('T', w - m.r + 8, h - m.b + 14);
-  ctx.fillStyle = 'rgba(232,163,61,0.85)';
-  ctx.fillText('势能/珠 →', w - m.r + 8, m.t + 8);
+  ctx.strokeStyle = '#f2f4fa';
+  ctx.beginPath(); ctx.moveTo(m.l + 6, m.t + 6); ctx.lineTo(m.l + 22, m.t + 6); ctx.stroke();
+  ctx.fillStyle = 'rgba(233,235,242,0.6)';
+  ctx.fillText('MSD@20τ', m.l + 26, m.t + 9);
+  ctx.strokeStyle = 'rgba(232,163,61,0.9)';
+  ctx.beginPath(); ctx.moveTo(m.l + 86, m.t + 6); ctx.lineTo(m.l + 102, m.t + 6); ctx.stroke();
+  ctx.fillStyle = 'rgba(232,163,61,0.9)';
+  ctx.fillText('势能/珠', m.l + 106, m.t + 9);
   if (opts.peTicks) {
     ctx.fillStyle = 'rgba(232,163,61,0.65)';
     for (const [v, label] of opts.peTicks) {

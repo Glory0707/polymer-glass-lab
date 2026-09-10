@@ -57,31 +57,40 @@
   </div>
 
   <!-- 样品参数浮层 -->
-  <div id="paramsPop" class="panel hidden">
-    <div class="kv"><span class="k">种子</span><span class="spacer"></span><span id="seedVal" class="mini mono">—</span></div>
-    <div class="kv"><span class="k">规模</span><span class="spacer"></span>
-      <select id="sizeSel">
-        <option value="30">1200 珠</option>
-        <option value="60" selected>2400 珠</option>
-        <option value="120">4800 珠</option>
-      </select>
+  <div id="paramsPop" class="pop hidden">
+    <div class="pgroup">
+      <h3>样品</h3>
+      <div class="kv"><span class="k">规模</span><span class="spacer"></span>
+        <select id="sizeSel">
+          <option value="30">1200 珠</option>
+          <option value="60" selected>2400 珠</option>
+          <option value="120">4800 珠</option>
+        </select>
+      </div>
+      <div class="kv"><span class="k">种子</span><span class="spacer"></span><span id="seedVal" class="mini mono">—</span>
+        <button id="btnNew" class="pill mini-pill">新样本</button>
+      </div>
     </div>
-    <div class="kv"><span class="k">珠色</span><span class="spacer"></span>
-      <select id="colorSel">
-        <option value="mobility" selected>迁移率</option>
-        <option value="chain">按链</option>
-      </select>
+    <div class="pgroup">
+      <h3>动力学</h3>
+      <div class="kv"><span class="k">速率</span><span class="spacer"></span><output id="rateVal">1.0×10⁻³</output><span class="unit">ε/τ</span></div>
+      <input type="range" id="rateSlider" min="0" max="100" value="43" />
+      <div class="kv"><span class="k">速度</span><span class="spacer"></span><output id="speedVal">16</output><span class="mini">步/帧</span></div>
+      <input type="range" id="speedSlider" min="1" max="40" value="16" />
+      <div class="kv"><span class="k">参考点</span><span class="spacer"></span><button id="btnResetRef" class="pill mini-pill">归零</button></div>
     </div>
-    <div class="kv"><span class="k">速率</span><span class="spacer"></span><output id="rateVal">1.0×10⁻³</output><span class="mini">ε/τ</span></div>
-    <input type="range" id="rateSlider" min="0" max="100" value="43" />
-    <div class="kv"><span class="k">速度</span><span class="spacer"></span><output id="speedVal">16</output><span class="mini">步/帧</span></div>
-    <input type="range" id="speedSlider" min="1" max="40" value="16" />
-    <div class="kv tight">
-      <label class="chk"><input type="checkbox" id="bondsChk" checked />键</label>
-      <label class="chk"><input type="checkbox" id="boxChk" checked />框</label>
-      <span class="spacer"></span>
-      <button id="btnNew" class="pill">新样本</button>
-      <button id="btnResetRef" class="pill">参考点归零</button>
+    <div class="pgroup">
+      <h3>显示</h3>
+      <div class="kv"><span class="k">珠色</span><span class="spacer"></span>
+        <select id="colorSel">
+          <option value="mobility" selected>迁移率</option>
+          <option value="chain">按链</option>
+        </select>
+      </div>
+      <div class="kv"><span class="k">叠加</span><span class="spacer"></span>
+        <label class="chk"><input type="checkbox" id="bondsChk" checked />键</label>
+        <label class="chk"><input type="checkbox" id="boxChk" checked />框</label>
+      </div>
     </div>
   </div>
 

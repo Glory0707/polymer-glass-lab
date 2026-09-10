@@ -115,7 +115,8 @@ body {
   pointer-events: none;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9);
 }
-#heroT { margin-bottom: 16px; }
+#heroT { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; margin-bottom: 14px; }
+#heroT .unit { display: block; }
 #heroT b {
   font-family: var(--disp); font-weight: 700; font-size: 42px; line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -123,15 +124,16 @@ body {
 #heroT .unit { font-size: 10px; color: var(--dim); letter-spacing: 0.08em; margin-left: 7px; }
 #heroT .unit em { font-style: normal; color: var(--faint); margin-left: 5px; }
 #readout .r {
-  display: flex; justify-content: flex-end; align-items: baseline; gap: 10px;
-  padding: 4px 0;
+  display: flex; justify-content: flex-end; align-items: baseline; gap: 14px;
+  padding: 5px 0;
 }
 #readout .r + .r { border-top: 1px solid rgba(255, 255, 255, 0.07); }
 #readout i {
   font-style: normal; font-size: 10px; letter-spacing: 0.2em;
   color: var(--faint); text-transform: uppercase;
+  width: 34px; text-align: left; flex: none;
 }
-#readout .r b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 66px; }
+#readout .r b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 74px; text-align: right; }
 #readout .r span { font-size: 10px; color: var(--faint); }
 #readout .dim b, #readout .dim span { color: var(--faint); font-size: 11.5px; }
 
@@ -352,3 +354,25 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .pill.active { color: var(--accent); border-color: rgba(232, 163, 61, 0.45); background: rgba(232, 163, 61, 0.1); }
+
+/* ---- 样品参数浮层：分组 ---- */
+#paramsPop {
+  width: 300px;
+  padding: 8px 18px 12px;
+}
+#paramsPop .pgroup { padding: 10px 0 8px; }
+#paramsPop .pgroup + .pgroup { border-top: 1px solid var(--line); }
+#paramsPop h3 {
+  margin: 0 0 4px;
+  font: 600 9.5px var(--mono), 'Microsoft YaHei UI', sans-serif;
+  letter-spacing: 0.28em; color: var(--faint);
+  text-transform: uppercase;
+}
+#paramsPop .kv { margin: 9px 0; }
+#paramsPop input[type="range"] { height: 16px; }
+.mini-pill { padding: 3px 10px; font-size: 11px; border-radius: 8px; }
+#paramsToggle.active {
+  color: var(--accent);
+  border-color: rgba(232, 163, 61, 0.45);
+  background: rgba(232, 163, 61, 0.1);
+}

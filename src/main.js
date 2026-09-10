@@ -372,7 +372,26 @@ function bindUI() {
 
   $('figsToggle').addEventListener('click', () => $('figs').classList.toggle('open'));
   $('figsClose').addEventListener('click', () => $('figs').classList.remove('open'));
-  $('paramsToggle').addEventListener('click', () => $('paramsPop').classList.toggle('hidden'));
+  const pop = $('paramsPop');
+  const ptoggle = $('paramsToggle');
+  ptoggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = pop.classList.toggle('hidden') === false;
+    ptoggle.classList.toggle('active', open);
+  });
+  document.addEventListener('click', (e) => {
+    if (pop.classList.contains('hidden')) return;
+    if (pop.contains(e.target) || ptoggle.contains(e.target)) return;
+    pop.classList.add('hidden');
+    ptoggle.classList.remove('active');
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      pop.classList.add('hidden');
+      ptoggle.classList.remove('active');
+      $('figs').classList.remove('open');
+    }
+  });
 
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
