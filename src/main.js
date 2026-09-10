@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=9';
-import { GlassRenderer } from './renderer.js?v=9';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=9';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, VIRIDIS_LUT } from './analysis.js?v=9';
+import { KGSim } from './md.js?v=10';
+import { GlassRenderer } from './renderer.js?v=10';
+import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=10';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb, THERMAL_LUT } from './analysis.js?v=10';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -189,7 +189,7 @@ function updateColors() {
     return;
   }
   if (sim.mobAge() < sim.dt) return; // 窗口尚未建立
-  const u = sim.upos, s = sim.snapMob, lut = VIRIDIS_LUT;
+  const u = sim.upos, s = sim.snapMob, lut = THERMAL_LUT;
   for (let i3 = 0; i3 < u.length; i3 += 3) {
     const dx = u[i3] - s[i3], dy = u[i3 + 1] - s[i3 + 1], dz = u[i3 + 2] - s[i3 + 2];
     const m2 = dx * dx + dy * dy + dz * dz;

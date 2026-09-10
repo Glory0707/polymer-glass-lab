@@ -3,13 +3,13 @@
  *  1) MSD–τ 双对数曲线（当前温度实时 + 历史温度幽灵曲线 + 扩散参考线）
  *  2) 热历史图：固定滞后窗口 MSD 与每珠势能 vs 温度，两段式拟合标注 Tg
  */
-import { tColorCss, viridis } from './analysis.js?v=8';
+import { tColorCss, thermal } from './analysis.js?v=10';
 
-/** 曲线用：viridis 提亮，保证深底可读 */
+/** 曲线用：热成像提亮，保证深底可读 */
 function curveColor(T, alpha = 1) {
   const x = Math.min(1, Math.max(0, (T - 0.05) / 1.45));
-  let [r, g, b] = viridis(x);
-  r = r * 0.55 + 0.45; g = g * 0.55 + 0.45; b = b * 0.55 + 0.45;
+  let [r, g, b] = thermal(x);
+  r = r * 0.6 + 0.4; g = g * 0.6 + 0.4; b = b * 0.6 + 0.4;
   const R = Math.round(r * 255), G = Math.round(g * 255), B = Math.round(b * 255);
   return alpha >= 1 ? `rgb(${R},${G},${B})` : `rgba(${R},${G},${B},${alpha})`;
 }

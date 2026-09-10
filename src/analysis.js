@@ -91,30 +91,28 @@ export function twoSegmentFit(bins) {
   };
 }
 
-// viridis 五锚点（深紫 → 青 → 亮黄）：暗底友好的科学色标
-const VIRIDIS = [
-  [0.267, 0.005, 0.329],  // #440154
-  [0.231, 0.318, 0.545],  // #3b528b
-  [0.127, 0.569, 0.551],  // #21918c
-  [0.369, 0.789, 0.383],  // #5ec962
-  [0.992, 0.906, 0.145],  // #fde725
+// 热成像色标：深钢蓝(冻结) → 冰白 → 琥珀(活跃)。整页只讲冷热一件事
+const THERMAL = [
+  [0.055, 0.16, 0.30],   // 深钢蓝
+  [0.80, 0.87, 0.93],    // 冰白
+  [1.00, 0.55, 0.30],    // 琥珀
 ];
 
-/** 归一化 t ∈ [0,1] → viridis RGB（0..1 浮点） */
-export function viridis(t) {
+/** 归一化 t ∈ [0,1] → 热成像 RGB（0..1 浮点） */
+export function thermal(t) {
   t = Math.min(1, Math.max(0, t));
-  const x = t * 4;
-  const i = Math.min(3, Math.floor(x));
+  const x = t * 2;
+  const i = Math.min(1, Math.floor(x));
   const f = x - i;
-  const a = VIRIDIS[i], b = VIRIDIS[i + 1];
+  const a = THERMAL[i], b = THERMAL[i + 1];
   return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
 }
 
 /** 256 级查找表（珠子逐帧着色用） */
-export const VIRIDIS_LUT = (() => {
+export const THERMAL_LUT = (() => {
   const lut = new Float32Array(256 * 3);
   for (let i = 0; i < 256; i++) {
-    const [r, g, b] = viridis(i / 255);
+    const [r, g, b] = thermal(i / 255);
     lut[i * 3] = r; lut[i * 3 + 1] = g; lut[i * 3 + 2] = b;
   }
   return lut;
@@ -126,7 +124,7 @@ export const VIRIDIS_LUT = (() => {
  */
 export function tColorCss(T, alpha = 1, lift = 0) {
   const x = Math.min(1, Math.max(0, (T - 0.05) / 1.45));
-  let [r, g, b] = viridis(x);
+  let [r, g, b] = thermal(x);
   if (lift > 0) {
     r = r * (1 - lift) + lift;
     g = g * (1 - lift) + lift;

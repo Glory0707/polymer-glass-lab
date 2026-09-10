@@ -236,7 +236,7 @@ input[type="range"]::-moz-range-thumb {
 #tempSlider { height: 30px; margin: 0; }
 #tempSlider::-webkit-slider-runnable-track {
   height: 8px; border-radius: 4px;
-  background: linear-gradient(90deg, #440154, #3b528b, #21918c, #5ec962, #fde725);
+  background: linear-gradient(90deg, #16324f, #ccddee 50%, #ff8a3d);
 }
 #tempSlider::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -248,7 +248,7 @@ input[type="range"]::-moz-range-thumb {
 }
 #tempSlider::-moz-range-track {
   height: 8px; border-radius: 4px;
-  background: linear-gradient(90deg, #440154, #3b528b, #21918c, #5ec962, #fde725);
+  background: linear-gradient(90deg, #16324f, #ccddee 50%, #ff8a3d);
 }
 #tempSlider::-moz-range-thumb {
   width: 9px; height: 28px; border-radius: 3px; border: none;
