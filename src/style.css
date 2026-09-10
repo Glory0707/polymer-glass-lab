@@ -180,12 +180,19 @@ body {
 }
 #paramsPop.hidden { display: none; }
 .panel.open { transform: translateX(0); }
-#paramsPop .kv { display: flex; align-items: center; gap: 8px; margin: 9px 0; }
-#paramsPop .k { color: var(--dim); font-size: 11px; letter-spacing: 0.14em; }
+#paramsPop .kv, #figs .kv { display: flex; align-items: center; gap: 8px; margin: 9px 0; }
+#paramsPop .k, #figs .k { color: var(--dim); font-size: 11px; letter-spacing: 0.14em; }
 .mini { font-size: 11px; color: var(--mid); }
 .mono { font-variant-numeric: tabular-nums; }
 #paramsPop .kv.tight { gap: 6px; }
-#paramsPop .btns { display: flex; gap: 6px; margin: 4px 0 0; }
+#paramsPop .btns, #figs .btns { display: flex; gap: 6px; margin: 4px 0 0; }
+input[type="text"] {
+  flex: 1; min-width: 0;
+  background: #161b26; color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: 8px;
+  padding: 4px 8px; font-size: 12px; font-family: inherit;
+}
+input[type="text"]:focus { outline: none; border-color: var(--accent); }
 
 label.chk { color: var(--dim); cursor: pointer; gap: 4px; display: inline-flex; align-items: center; font-size: 12px; }
 label.chk input { accent-color: var(--accent); }
@@ -371,7 +378,14 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.14) transparent;
 }
+#paramsPop::-webkit-scrollbar { width: 5px; }
+#paramsPop::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 3px; }
 #paramsPop .pgroup { padding: 10px 0 8px; }
 #paramsPop .pgroup + .pgroup { border-top: 1px solid var(--line); }
 #paramsPop h3 {

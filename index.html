@@ -6,7 +6,7 @@
   <title>玻璃化转变 · 一场降温实验</title>
   <meta name="description" content="把熔体降温，看链段冻进玻璃：Kremer–Grest 珠簧模型的实时分子动力学，浏览器里跑。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23131a26'/><text x='5' y='23' font-family='Georgia,serif' font-weight='700' font-size='17' fill='%23e8a33d'>Tg</text></svg>" />
-  <link rel="stylesheet" href="./src/style.css?v=23" />
+  <link rel="stylesheet" href="./src/style.css?v=26" />
   <script type="importmap">
     {
       "imports": {
@@ -151,29 +151,29 @@
   <aside id="figs" class="panel">
     <button id="figsClose" class="pill" aria-label="关闭">×</button>
     <figure>
-      <figcaption><span>均方位移</span></figcaption>
+      <figcaption><span>均方位移</span><span class="mini">MSD – τ 双对数</span></figcaption>
       <canvas id="msdPlot"></canvas>
     </figure>
     <figure>
-      <figcaption><span>热历史</span></figcaption>
+      <figcaption><span>热历史</span><span class="mini">温度扫描 · Tg 拐点</span></figcaption>
       <canvas id="histPlot"></canvas>
     </figure>
     <figure>
-      <figcaption><span>非高斯参数 α₂</span></figcaption>
+      <figcaption><span>非高斯参数 α₂</span><span class="mini">动力学偏离高斯</span></figcaption>
       <canvas id="a2Plot"></canvas>
     </figure>
     <figure>
-      <figcaption><span>van Hove G_s(r, 5τ)</span></figcaption>
+      <figcaption><span>位移分布</span><span class="mini">van Hove G_s(r, 5τ)</span></figcaption>
       <canvas id="vhPlot"></canvas>
     </figure>
     <figure>
-      <figcaption><span>力学响应</span></figcaption>
+      <figcaption><span>力学响应</span><span class="mini">偏应力 – 应变</span></figcaption>
       <canvas id="stressPlot"></canvas>
     </figure>
     <figure>
-      <figcaption><span>记忆实验</span><span class="mini" id="protoState"></span></figcaption>
+      <figcaption><span>记忆实验 <span class="mini">温度阶梯</span></span><span class="mini" id="protoState"></span></figcaption>
       <canvas id="protoPlot"></canvas>
-      <div class="kv"><span class="k">阶梯</span><input type="text" id="protoSeq" value="1.2 3000, 0.6 6000, 0.9 4000" /></div>
+      <div class="kv"><span class="k">阶梯</span><input type="text" id="protoSeq" value="1.2 150, 0.6 300, 1.0 200" placeholder="格式：T 时长(τ)，逗号分隔" /></div>
       <div class="btns">
         <button id="btnProto" class="pill">跑协议</button>
         <button id="btnProtoStop" class="pill">停</button>
@@ -201,6 +201,6 @@
       if (el) { el.textContent = msg; document.getElementById('fatal').hidden = false; }
     }, true);
   </script>
-  <script type="module" src="./src/main.js?v=23"></script>
+  <script type="module" src="./src/main.js?v=26"></script>
 </body>
 </html>

@@ -8,8 +8,8 @@
  *                   |'protocol'|'protocol-stop'}
  *   worker → main: {type:'ready'|'anneal'|'anneal-done'|'frame'|'samples'|'proto-done'|'fatal'}
  */
-import { KGSim } from './md.js?v=23';
-import { binByT, twoSegmentFit } from './analysis.js?v=23';
+import { KGSim } from './md.js?v=26';
+import { binByT, twoSegmentFit } from './analysis.js?v=26';
 
 let sim = null;
 const cfg = {
@@ -111,8 +111,7 @@ function tick() {
   if (!sim) return;
   tickNo++;
 
-  if (protocol) { tickProtocol(); pushFrame(); pushSamples(); return; }
-
+  // 制备中的退火优先于协议；暂停冻结协议推进
   if (annealLeft > 0) {
     const chunk = Math.min(annealLeft, 600);
     sim.anneal(chunk);
@@ -123,6 +122,8 @@ function tick() {
   }
 
   if (cfg.paused) { pushSamples(); return; }
+
+  if (protocol) { tickProtocol(); pushFrame(); pushSamples(); return; }
 
   if (cfg.densityTarget != null) {
     const remain = Math.log(cfg.densityTarget / sim.density);
@@ -278,8 +279,15 @@ self.onmessage = (e) => {
       case 'stiffness': sim.stiffness = m.v; break;
       case 'npt': sim.npt = m.v; sim.targetP = m.p0; break;
       case 'density-target': cfg.densityTarget = m.v; break;
-      case 'deform': cfg.deform.mode = m.mode; cfg.deform.rate = m.rate; cfg.deform.amp = m.amp; cfg.deform.freq = m.freq; break;
-      case 'deform-release': cfg.deform.mode = 'none'; cfg.deform.target = 0; break;
+      case 'deform':
+        cfg.deform.mode = m.mode; cfg.deform.rate = m.rate; cfg.deform.amp = m.amp; cfg.deform.freq = m.freq;
+        // _deformStep 读的是 sim.deform，必须同步，否则形变永远不会发生
+        if (sim) { sim.deform.mode = m.mode; sim.deform.rate = m.rate; sim.deform.amp = m.amp; sim.deform.freq = m.freq; }
+        break;
+      case 'deform-release':
+        cfg.deform.mode = 'none'; cfg.deform.target = 0;
+        if (sim) { sim.deform.mode = 'none'; sim.deform.target = null; }
+        break;
       case 'protocol': protocol = m.seq; protoIdx = -1; protoStepLeft = 0; break;
       case 'protocol-stop': protocol = null; break;
     }

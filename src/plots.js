@@ -3,7 +3,7 @@
  *  1) MSD–τ 双对数曲线（当前温度实时 + 历史温度幽灵曲线 + 扩散参考线）
  *  2) 热历史图：固定滞后窗口 MSD 与每珠势能 vs 温度，两段式拟合标注 Tg
  */
-import { tColorCss, thermal } from './analysis.js?v=23';
+import { tColorCss, thermal } from './analysis.js?v=26';
 
 /** 曲线用：热成像提亮，保证深底可读 */
 function curveColor(T, alpha = 1) {
@@ -121,11 +121,18 @@ export function drawMSDPlot(canvas, ghosts, active) {
     }
   }
 
-  // 幽灵曲线（历史温度）
+  // 幽灵曲线（历史温度），末端标 T 值
   for (const c of ghosts) {
     ctx.strokeStyle = curveColor(c.T, 0.3);
     ctx.lineWidth = 1.2;
     poly(ctx, c.pts, X, Y);
+    if (c.pts.length) {
+      const last = c.pts[c.pts.length - 1];
+      ctx.fillStyle = curveColor(c.T, 0.55);
+      ctx.font = '9px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`T=${c.T.toFixed(2)}`, X(last[0]) + 4, Y(last[1]) + 3);
+    }
   }
 
   // 当前曲线
@@ -212,14 +219,26 @@ export function drawA2Plot(canvas, pts) {
   ctx.strokeStyle = 'rgba(255,255,255,0.18)';
   ctx.beginPath(); ctx.moveTo(m.l, Y(0)); ctx.lineTo(m.l + pw, Y(0)); ctx.stroke();
   ctx.fillStyle = 'rgba(233,235,242,0.35)';
-  ctx.fillText('α₂ = 0', m.l + pw - 8, Y(0) - 5);
+  ctx.textAlign = 'left';
+  ctx.fillText('α₂ = 0', m.l + 6, Y(0) - 5);
 
-  // 曲线
+  // 原始曲线（弱化）+ 平滑主线（窗口 5），短 τ 涨落大，平滑后趋势可读
+  ctx.strokeStyle = 'rgba(242,244,250,0.28)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  pts.forEach(([t, a], idx) => {
+    const x = X(t), y = Y(a);
+    idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  const win = 2;
   ctx.strokeStyle = '#f2f4fa';
   ctx.lineWidth = 2;
   ctx.beginPath();
   pts.forEach(([t, a], idx) => {
-    const x = X(t), y = Y(a);
+    let s = 0, n = 0;
+    for (let k = Math.max(0, idx - win); k <= Math.min(pts.length - 1, idx + win); k++) { s += pts[k][1]; n++; }
+    const x = X(t), y = Y(s / n);
     idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   });
   ctx.stroke();
@@ -349,10 +368,15 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
       ctx.fillText(label, w - m.r + 8, Ype(v) + 3);
     }
   }
+
+  ctx.fillStyle = 'rgba(233,235,242,0.55)';
+  ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('T', w - m.r, h - m.b + 14);
 }
 
 /**
- * 力学响应图：单轴/循环为 σ–ε，剪切为 σ–t
+ * 力学响应图：单轴/循环为 σ–ε
  */
 export function drawStressPlot(canvas, pts) {
   const g = prep(canvas);
@@ -362,11 +386,16 @@ export function drawStressPlot(canvas, pts) {
   const pw = w - m.l - m.r, ph = h - m.t - m.b;
   const font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
 
-  if (!pts || pts.length < 2) {
+  // 应变从未扫开（无力学模式）→ 引导文案，避免画出退化坐标轴与纯噪声线
+  let spanX = 0;
+  if (pts && pts.length) {
+    spanX = Math.max(...pts.map((p) => Math.abs(p[0] - pts[0][0])));
+  }
+  if (!pts || pts.length < 2 || spanX < 1e-10) {
     ctx.fillStyle = 'rgba(233,235,242,0.35)';
     ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('在力学面板选模式后采样', m.l + pw / 2, m.t + ph / 2);
+    ctx.fillText('在「样品」面板选力学模式后实时采样', m.l + pw / 2, m.t + ph / 2);
     return;
   }
   let xlo = Infinity, xhi = -Infinity, ylo = Infinity, yhi = -Infinity;
@@ -377,8 +406,18 @@ export function drawStressPlot(canvas, pts) {
   const X = (x) => m.l + (x - xlo) / (xhi - xlo || 1) * pw;
   const Y = (y) => m.t + (1 - (y - ylo) / (yhi - ylo || 1)) * ph;
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-  ctx.beginPath(); ctx.moveTo(m.l, Y(0)); ctx.lineTo(m.l + pw, Y(0)); ctx.stroke();
+  // 纵轴范围刻度（弱化）
+  ctx.fillStyle = 'rgba(233,235,242,0.35)';
+  ctx.font = font;
+  ctx.textAlign = 'right';
+  ctx.fillText(yhi.toFixed(2), m.l - 5, m.t + 8);
+  ctx.fillText(ylo.toFixed(2), m.l - 5, m.t + ph);
+
+  if (ylo < 0 && yhi > 0) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(m.l, Y(0)); ctx.lineTo(m.l + pw, Y(0)); ctx.stroke();
+  }
 
   ctx.strokeStyle = '#f2f4fa';
   ctx.lineWidth = 1.8;
@@ -386,16 +425,19 @@ export function drawStressPlot(canvas, pts) {
   pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(X(x), Y(y)) : ctx.lineTo(X(x), Y(y))));
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(233,235,242,0.45)';
-  ctx.font = font;
+  ctx.fillStyle = 'rgba(233,235,242,0.55)';
+  ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'left';
-  ctx.fillText(xlo.toFixed(2), m.l + 2, h - m.b + 16);
+  ctx.fillText('偏应力', m.l + 4, m.t + 2);
   ctx.textAlign = 'right';
-  ctx.fillText(xhi.toFixed(2), m.l + pw - 2, h - m.b + 16);
+  ctx.fillText('应变 ε', m.l + pw - 2, h - m.b + 16);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(233,235,242,0.45)';
+  ctx.fillText(xlo.toFixed(2), m.l + 2, h - m.b + 16);
 }
 
 /**
- * 记忆实验：PE(t) 白线 + T(t) 琥珀线（右轴）
+ * 记忆实验：PE(t) 白线（左轴）+ T(t) 琥珀线（独立标度）
  */
 export function drawProtoPlot(canvas, pts) {
   const g = prep(canvas);
@@ -409,18 +451,32 @@ export function drawProtoPlot(canvas, pts) {
     ctx.fillStyle = 'rgba(233,235,242,0.35)';
     ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('在力学面板配置温度阶梯后运行', m.l + pw / 2, m.t + ph / 2);
+    ctx.fillText('下方输入温度阶梯，点「跑协议」', m.l + pw / 2, m.t + ph / 2);
     return;
   }
   const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
   const X = (t) => m.l + (t - t0) / (t1 - t0 || 1) * pw;
-  let peLo = Infinity, peHi = -Infinity;
-  for (const [, pe] of pts) { if (pe < peLo) peLo = pe; if (pe > peHi) peHi = pe; }
+  let peLo = Infinity, peHi = -Infinity, tLo = Infinity, tHi = -Infinity;
+  for (const [, pe, T] of pts) {
+    if (pe < peLo) peLo = pe; if (pe > peHi) peHi = pe;
+    if (T != null) { if (T < tLo) tLo = T; if (T > tHi) tHi = T; }
+  }
   const pad = (peHi - peLo) * 0.15 + 0.01;
   const Ype = (pe) => m.t + (1 - (pe - (peLo - pad)) / (peHi - peLo + 2 * pad)) * ph;
+  const hasT = tHi > tLo;
+  const Yt = (T) => m.t + (1 - (T - tLo) / (tHi - tLo || 1)) * ph;
 
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-  ctx.beginPath(); ctx.moveTo(m.l, Ype(0) - 0); ctx.lineTo(m.l + pw, Ype(0)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(m.l, Ype(0)); ctx.lineTo(m.l + pw, Ype(0)); ctx.stroke();
+
+  // T(t) 琥珀线
+  if (hasT) {
+    ctx.strokeStyle = 'rgba(232,163,61,0.85)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    pts.forEach(([t, , T], i) => (i === 0 ? ctx.moveTo(X(t), Yt(T)) : ctx.lineTo(X(t), Yt(T))));
+    ctx.stroke();
+  }
 
   ctx.strokeStyle = '#f2f4fa';
   ctx.lineWidth = 1.6;
@@ -428,11 +484,16 @@ export function drawProtoPlot(canvas, pts) {
   pts.forEach(([t, pe], i) => (i === 0 ? ctx.moveTo(X(t), Ype(pe)) : ctx.lineTo(X(t), Ype(pe))));
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(233,235,242,0.45)';
   ctx.font = font;
   ctx.textAlign = 'left';
-  ctx.fillText('PE(t) · PE/ε每珠', m.l + 4, m.t + 10);
+  ctx.fillStyle = 'rgba(233,235,242,0.6)';
+  ctx.fillText('势能/珠', m.l + 4, m.t + 10);
+  if (hasT) {
+    ctx.fillStyle = 'rgba(232,163,61,0.85)';
+    ctx.fillText('T', m.l + 48, m.t + 10);
+  }
   ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(233,235,242,0.45)';
   ctx.fillText('τ=' + t0.toFixed(0) + '→' + t1.toFixed(0), m.l + pw - 4, m.t + 10);
 }
 
@@ -457,7 +518,8 @@ export function drawVHPlot(canvas, vhBins, vhMax, msdEst) {
   const nb = vhBins.length;
   const dr = vhMax / nb;
   const maxCount = Math.max(...vhBins) * 1.15 || 1;
-  const Y = (v) => m.t + (1 - v / maxCount) * ph;
+  // √ 纵轴：冷态主峰极高，线性标度下重尾完全不可见——开方后尾部结构可读
+  const Y = (v) => m.t + (1 - Math.sqrt(Math.max(v, 0) / maxCount)) * ph;
   const X = (r) => m.l + (r / vhMax) * pw;
 
   const bw = pw / nb;
@@ -485,7 +547,7 @@ export function drawVHPlot(canvas, vhBins, vhMax, msdEst) {
   ctx.fillStyle = 'rgba(233,235,242,0.45)';
   ctx.font = font;
   ctx.textAlign = 'left';
-  ctx.fillText('G_s(r)', m.l + 4, m.t + 2);
+  ctx.fillText('G_s(r) · √标度', m.l + 4, m.t + 2);
   ctx.fillText('r/σ', m.l + pw - 24, h - m.b + 14);
   ctx.textAlign = 'right';
   ctx.fillStyle = 'rgba(255,107,94,0.7)';
