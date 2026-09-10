@@ -73,12 +73,26 @@ export class GlassRenderer {
     this.bondLines.frustumCulled = false;
     this.scene.add(this.bondLines);
 
-    // 盒子线框
-    const boxGeo = new THREE.BoxGeometry(sim.Lx, sim.Ly, sim.Lz);
-    const edges = new THREE.EdgesGeometry(boxGeo);
+    // 盒子参考框：只画 8 个角的取景括号——整根棱边在近距透视下会把远端
+    // 投影得很大，看起来像从珠子块里辐射出去的长线
+    const hw = sim.Lx / 2, hh = sim.Ly / 2, hd = sim.Lz / 2;
+    const k = 0.9; // 括号臂长 (σ)
+    const pts = [];
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const bx = sx * hw, by = sy * hh, bz = sz * hd;
+          pts.push(bx, by, bz, bx - sx * k, by, bz);
+          pts.push(bx, by, bz, bx, by - sy * k, bz);
+          pts.push(bx, by, bz, bx, by, bz - sz * k);
+        }
+      }
+    }
+    const bracketGeo = new THREE.BufferGeometry();
+    bracketGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
     this.boxHelper = new THREE.LineSegments(
-      edges,
-      new THREE.LineBasicMaterial({ color: 0x2e3138, transparent: true, opacity: 0.8 })
+      bracketGeo,
+      new THREE.LineBasicMaterial({ color: 0x3a3d45, transparent: true, opacity: 0.9 })
     );
     this.boxHelper.frustumCulled = false;
     this.scene.add(this.boxHelper);
@@ -122,17 +136,11 @@ export class GlassRenderer {
       for (let b = 0, w = 0; b < bp.length; b += 2, w += 6) {
         const i3 = bp[b] * 3, j3 = bp[b + 1] * 3;
         arr[w] = p[i3]; arr[w + 1] = p[i3 + 1]; arr[w + 2] = p[i3 + 2];
-        // 跨周期边界的键用最小镜像补画，避免横穿盒子的长线
-        let sx = 0, sy = 0, sz = 0;
-        let dx = p[j3] - p[i3];
-        if (dx > Lx / 2) sx = Lx; else if (dx < -Lx / 2) sx = -Lx;
-        let dy = p[j3 + 1] - p[i3 + 1];
-        if (dy > Ly / 2) sy = Ly; else if (dy < -Ly / 2) sy = -Ly;
-        let dz = p[j3 + 2] - p[i3 + 2];
-        if (dz > Lz / 2) sz = Lz; else if (dz < -Lz / 2) sz = -Lz;
-        arr[w + 3] = p[j3] + sx;
-        arr[w + 4] = p[j3 + 1] + sy;
-        arr[w + 5] = p[j3 + 2] + sz;
+        // 跨周期边界的键：端点 j 取其最近镜像（与力计算的最小镜像约定一致），
+        // 否则跨界键会被画成横跨整个盒子的长线
+        arr[w + 3] = p[j3]     - Lx * Math.round((p[j3] - p[i3]) / Lx);
+        arr[w + 4] = p[j3 + 1] - Ly * Math.round((p[j3 + 1] - p[i3 + 1]) / Ly);
+        arr[w + 5] = p[j3 + 2] - Lz * Math.round((p[j3 + 2] - p[i3 + 2]) / Lz);
       }
       this.bondLines.geometry.attributes.position.needsUpdate = true;
       this.bondLines.visible = true;
