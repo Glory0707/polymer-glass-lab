@@ -1,10 +1,10 @@
 /**
  * main.js — 应用主控：模拟循环、UI 接线、MSD 采样、热历史记录与 Tg 拟合
  */
-import { KGSim } from './md.js?v=5';
-import { GlassRenderer } from './renderer.js?v=5';
-import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=5';
-import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb } from './analysis.js?v=5';
+import { KGSim } from './md.js?v=6';
+import { GlassRenderer } from './renderer.js?v=6';
+import { drawMSDPlot, drawHistoryPlot } from './plots.js?v=6';
+import { binByT, twoSegmentFit, linFit, tColorCss, hsl2rgb } from './analysis.js?v=6';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
@@ -55,10 +55,10 @@ function rebuild({ newSeed = false, keepT = true } = {}) {
   state.annealLeft = 4000;
   $('anneal').hidden = false;
   state.renderer = new GlassRenderer($('viewport'), state.sim);
-  const sampleEl = $('plateSample');
+  const sampleEl = $('sampleInfo');
   if (sampleEl) {
-    sampleEl.childNodes[0].nodeValue =
-      `样品 · ${state.sim.numChains} 链 × ${state.sim.chainLen} 珠 · ρ = 1.0 σ⁻³ · LJ 单位 · 种子 `;
+    sampleEl.textContent =
+      `${state.sim.numChains} 链 × ${state.sim.chainLen} 珠 · ρ = 1.0`;
   }
   syncSliderToSim();
 
@@ -307,7 +307,8 @@ function updateStats() {
   $('vPE').textContent = sim.pePerBead.toFixed(2);
   const lastMsd = state.msdPts.length ? state.msdPts[state.msdPts.length - 1][1] : NaN;
   $('vMSD').textContent = isFinite(lastMsd) ? lastMsd.toFixed(2) : '—';
-  $('plateTau').textContent = `τ ${sim.time.toFixed(0)} · ${Math.round(state.perf.fps)}fps`;
+  $('vTau').textContent = sim.time.toFixed(0);
+  $('vFps').textContent = Math.round(state.perf.fps) + 'fps';
 }
 
 function showFatal(err) {
@@ -321,9 +322,8 @@ function showFatal(err) {
 
 function setMode(mode) {
   state.mode = mode;
-  document.querySelectorAll('#modeSeg button').forEach((b) => {
-    b.classList.toggle('active', b.dataset.mode === mode);
-  });
+  $('btnCool').classList.toggle('active', mode === 'cool');
+  $('btnHeat').classList.toggle('active', mode === 'heat');
 }
 
 function bindUI() {
@@ -334,9 +334,8 @@ function bindUI() {
   });
   tempSlider.addEventListener('change', () => archiveGhost());
 
-  document.querySelectorAll('#modeSeg button').forEach((b) => {
-    b.addEventListener('click', () => setMode(b.dataset.mode));
-  });
+  $('btnCool').addEventListener('click', () => setMode('cool'));
+  $('btnHeat').addEventListener('click', () => setMode('heat'));
 
   const rateSlider = $('rateSlider');
   const rateLabel = $('rateVal');
@@ -376,7 +375,9 @@ function bindUI() {
   $('colorSel').addEventListener('change', (e) => { state.colorMode = e.target.value; });
   $('bondsChk').addEventListener('change', (e) => { state.showBonds = e.target.checked; });
 
-  $('panelToggle').addEventListener('click', () => $('figs').classList.toggle('open'));
+  $('figsToggle').addEventListener('click', () => $('figs').classList.toggle('open'));
+  $('figsClose').addEventListener('click', () => $('figs').classList.remove('open'));
+  $('paramsToggle').addEventListener('click', () => $('paramsPop').classList.toggle('hidden'));
   $('intro').addEventListener('click', () => $('intro').classList.add('gone'));
   setTimeout(() => $('intro')?.classList.add('gone'), 14000);
 

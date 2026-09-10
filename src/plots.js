@@ -3,7 +3,7 @@
  *  1) MSD–τ 双对数曲线（当前温度实时 + 历史温度幽灵曲线 + 扩散参考线）
  *  2) 热历史图：固定滞后窗口 MSD 与每珠势能 vs 温度，两段式拟合标注 Tg
  */
-import { tColorCss } from './analysis.js?v=5';
+import { tColorCss } from './analysis.js?v=6';
 
 function prep(canvas) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -17,15 +17,14 @@ function prep(canvas) {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#f8f5ee';
-  ctx.fillRect(0, 0, w, h);
+  /* 透明底：玻璃面板透出 */
   return { ctx, w, h };
 }
 
 function grid(ctx, m, w, h, xTicks, yTicks, X, Y) {
-  ctx.strokeStyle = '#e0dbcd';
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
   ctx.lineWidth = 1;
-  ctx.fillStyle = '#8a8577';
+  ctx.fillStyle = 'rgba(233,235,242,0.42)';
   ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'center';
   for (const [v, label] of xTicks) {
@@ -101,12 +100,12 @@ export function drawMSDPlot(canvas, ghosts, active) {
     }
     if (anchor) {
       const A = anchor[1] / anchor[0];
-      ctx.strokeStyle = 'rgba(110,106,95,0.45)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.22)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       poly(ctx, [[0.15, A * 0.15], [maxTau * 1.3, A * maxTau * 1.3]], X, Y);
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(110,106,95,0.8)';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
       ctx.textAlign = 'left';
       ctx.fillText('斜率1（扩散）', X(maxTau * 1.3) - 92, Y(A * maxTau * 1.3) + 14);
@@ -123,17 +122,20 @@ export function drawMSDPlot(canvas, ghosts, active) {
   // 当前曲线
   if (active && active.pts.length > 1) {
     ctx.strokeStyle = tColorCss(active.T, 1);
-    ctx.lineWidth = 2;
+    ctx.shadowColor = tColorCss(active.T, 0.8);
+    ctx.shadowBlur = 10;
+    ctx.lineWidth = 2.2;
     poly(ctx, active.pts, X, Y);
     const last = active.pts[active.pts.length - 1];
     ctx.fillStyle = tColorCss(active.T, 1);
     ctx.beginPath();
     ctx.arc(X(last[0]), Y(last[1]), 2.4 + Math.sin(performance.now() / 280) * 0.9 + 0.9, 0, Math.PI * 2);
     ctx.fill();
+    ctx.shadowBlur = 0;
   }
   ctx.restore();
 
-  ctx.fillStyle = '#6d6a5e';
+  ctx.fillStyle = 'rgba(233,235,242,0.55)';
   ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'left';
   ctx.fillText('MSD / σ²', m.l + 6, m.t + 2);
@@ -173,9 +175,9 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
   const Ype = (pe) => m.t + (1 - (pe - peLo) / (peHi - peLo || 1)) * ph;
 
   // 网格
-  ctx.strokeStyle = '#e0dbcd';
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
   ctx.lineWidth = 1;
-  ctx.fillStyle = '#8a8577';
+  ctx.fillStyle = 'rgba(233,235,242,0.42)';
   ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'center';
   for (let T = 0.4; T <= 1.41; T += 0.4) {
@@ -196,7 +198,7 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 
   // 势能（右轴，DSC 类比）
   if (opts.hasData) {
-    ctx.strokeStyle = 'rgba(158,112,20,0.9)';
+    ctx.strokeStyle = 'rgba(232,163,61,0.85)';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     let started = false;
@@ -210,7 +212,7 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 
   // 原始样本散点
   if (opts.raw) {
-    ctx.fillStyle = 'rgba(60,58,50,0.22)';
+    ctx.fillStyle = 'rgba(255,255,255,0.16)';
     for (const s of opts.raw) {
       ctx.fillRect(X(s.T) - 1, Y(s.msd) - 1, 2, 2);
     }
@@ -218,7 +220,7 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 
   // 分箱均值线
   if (bins.length > 1) {
-    ctx.strokeStyle = '#23221c';
+    ctx.strokeStyle = '#f2f4fa';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(X(bins[0].T), Y(bins[0].msd));
@@ -228,7 +230,7 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 
   // 两段式拟合 + Tg 标注
   if (fit) {
-    ctx.strokeStyle = 'rgba(110,106,95,0.55)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 4]);
     for (const seg of [fit.seg1, fit.seg2]) {
@@ -238,33 +240,33 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
       ctx.stroke();
     }
     ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(179,57,43,0.85)';
+    ctx.strokeStyle = 'rgba(255,107,94,0.9)';
     ctx.beginPath();
     ctx.moveTo(X(fit.Tg), m.t);
     ctx.lineTo(X(fit.Tg), m.t + ph);
     ctx.stroke();
-    ctx.fillStyle = '#b3392b';
+    ctx.fillStyle = '#ff8577';
     ctx.font = 'bold 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
     ctx.textAlign = fit.Tg > 1.1 ? 'right' : 'left';
     ctx.fillText(`Tg ≈ ${fit.Tg.toFixed(2)}`, X(fit.Tg) + (fit.Tg > 1.1 ? -6 : 6), m.t + 14);
   } else if (!opts.hasData) {
-    ctx.fillStyle = '#8a8577';
+    ctx.fillStyle = 'rgba(233,235,242,0.42)';
     ctx.font = '12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.fillText('按「降温」扫一遍温度，拐点即 Tg', m.l + pw / 2, m.t + ph / 2);
   }
 
   // 轴标 + 图例
-  ctx.fillStyle = '#6d6a5e';
+  ctx.fillStyle = 'rgba(233,235,242,0.55)';
   ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'left';
   ctx.fillText('MSD@20τ', m.l + 6, m.t + 2);
   ctx.textAlign = 'right';
   ctx.fillText('T', w - m.r + 8, h - m.b + 14);
-  ctx.fillStyle = 'rgba(158,112,20,0.9)';
+  ctx.fillStyle = 'rgba(232,163,61,0.85)';
   ctx.fillText('势能/珠 →', w - m.r + 8, m.t + 8);
   if (opts.peTicks) {
-    ctx.fillStyle = 'rgba(158,112,20,0.75)';
+    ctx.fillStyle = 'rgba(232,163,61,0.65)';
     for (const [v, label] of opts.peTicks) {
       ctx.fillText(label, w - m.r + 8, Ype(v) + 3);
     }
