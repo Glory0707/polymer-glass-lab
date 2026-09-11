@@ -8,8 +8,8 @@
  *                   |'protocol'|'protocol-stop'|'heat-brush'|'grab'|'grab-move'|'grab-release'}
  *   worker → main: {type:'ready'|'anneal'|'anneal-done'|'frame'|'samples'|'proto-done'|'fatal'}
  */
-import { KGSim } from './md.js?v=34';
-import { binByT, twoSegmentFit, tauFromMsd, vftFit } from './analysis.js?v=34';
+import { KGSim } from './md.js?v=37';
+import { binByT, twoSegmentFit, tauFromMsd, vftFit } from './analysis.js?v=37';
 
 let sim = null;
 const cfg = {

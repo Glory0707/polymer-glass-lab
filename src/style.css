@@ -351,12 +351,12 @@ input[type="range"]::-moz-range-thumb {
 }
 #fatal[hidden] { display: none; }
 
-/* 导览字幕条：底部居中，悬浮于温度轨之上 */
+/* 导览字幕条：底部居中，悬于控制行之上、避让右侧曲线面板 */
 #tourBar {
-  position: fixed; left: 50%; bottom: 118px;
+  position: fixed; left: 50%; bottom: 132px;
   transform: translateX(-50%);
   display: flex; align-items: center; gap: 12px;
-  max-width: min(640px, 88vw);
+  max-width: min(600px, max(320px, calc(100vw - 780px)));
   background: rgba(10, 13, 20, 0.88);
   border: 1px solid rgba(232, 163, 61, 0.35);
   border-radius: 12px;
@@ -364,9 +364,13 @@ input[type="range"]::-moz-range-thumb {
   font-size: 12.5px; color: var(--ink); letter-spacing: 0.04em;
   backdrop-filter: blur(12px);
   z-index: 30;
-  animation: rise 0.4s cubic-bezier(.22,.8,.3,1) both;
+  animation: riseC 0.4s cubic-bezier(.22,.8,.3,1) both;
 }
 #tourBar[hidden] { display: none; }
+@keyframes riseC {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
 #tourCaption em { color: var(--accent); font-style: normal; }
 
 @keyframes rise {

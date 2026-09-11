@@ -3,14 +3,14 @@
  * MD 内核运行在 Web Worker（sim.worker.js），本线程只做渲染与交互。
  */
 import * as THREE from 'three';
-import { GlassRenderer } from './renderer.js?v=34';
-import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot, drawVFTPlot, drawFsqPlot, drawProfilePlot } from './plots.js?v=34';
-import { THERMAL_LUT } from './analysis.js?v=34';
+import { GlassRenderer } from './renderer.js?v=37';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot, drawVFTPlot, drawFsqPlot, drawProfilePlot } from './plots.js?v=37';
+import { THERMAL_LUT } from './analysis.js?v=37';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
 
-const worker = new Worker(new URL('./sim.worker.js?v=34', import.meta.url), { type: 'module' });
+const worker = new Worker(new URL('./sim.worker.js?v=37', import.meta.url), { type: 'module' });
 
 /* 渲染所需的场景镜像（由 worker 消息填充） */
 const view = {
@@ -733,7 +733,12 @@ function boot() {
     requestAnimationFrame(frame);
     $('repoLink').href = 'https://github.com/Glory0707/polymer-glass-lab';
     $('btnTour').addEventListener('click', startTour);
-    $('tourStop').addEventListener('click', () => { wsend({ cmd: 'protocol-stop' }); stopTour(); });
+    $('tourStop').addEventListener('click', () => {
+      wsend({ cmd: 'protocol-stop' });
+      const psEl = $('protoState');
+      if (psEl) psEl.textContent = '';
+      stopTour();
+    });
   } catch (err) {
     showFatal(err);
   }
