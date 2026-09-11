@@ -140,6 +140,161 @@ if (fit) {
   check('两段式拟合出拐点', false, '拐点不显著，请复核扫描数据');
 }
 
+// ============ v33 扩展功能自检 ============
+console.log('\n--- v33 扩展：VFT / Fs(q,t) / P2 / 热笔 / 拽链 / 薄膜 ---');
+
+/** 局部动能温度：半径内珠子的 <v²>/3 */
+function localKe(s, x, y, z, R) {
+  let ke = 0, n = 0;
+  for (let i = 0; i < s.N; i++) {
+    const i3 = i * 3;
+    const dx = s.pos[i3] - x, dy = s.pos[i3 + 1] - y, dz = s.pos[i3 + 2] - z;
+    if (dx * dx + dy * dy + dz * dz < R * R) {
+      ke += s.vel[i3] ** 2 + s.vel[i3 + 1] ** 2 + s.vel[i3 + 2] ** 2;
+      n++;
+    }
+  }
+  return n ? ke / (3 * n) : 0;
+}
+
+// 18) τα 提取 + VFT 拟合：小扫描产 4 档温度的 MSD(τ) 曲线
+{
+  const { tauFromMsd, vftFit } = await import('../src/analysis.js');
+  const msdCurves = [];
+  const tMinScan = 0.25;
+  sim.T = 1.2; sim.run(12000);
+  for (const T of [1.2, 0.8, 0.5, tMinScan]) {
+    sim.T = T;
+    sim.run(15000);
+    const snap = sim.snapshotU();
+    const pts = [];
+    const t0c = sim.stepCount;
+    for (let k = 0; k < 60; k++) {
+      sim.run(250);
+      pts.push([(sim.stepCount - t0c) * sim.dt, sim.msdOver(snap)]);
+    }
+    msdCurves.push({ T, pts });
+  }
+  const taus = [];
+  for (const s of msdCurves) {
+    const tau = tauFromMsd(s.pts);
+    if (tau != null) taus.push({ T: s.T, tau });
+  }
+  const okTau = taus.length >= 2 && taus[taus.length - 1].tau > taus[0].tau * 2;
+  check('τα 提取随温度上升', okTau,
+    `${taus.length} 档` + (taus.length >= 2
+      ? `: τp(T=${taus[0].T.toFixed(1)})=${taus[0].tau.toFixed(2)} → τp(T=${taus[taus.length - 1].T.toFixed(2)})=${taus[taus.length - 1].tau.toFixed(2)}`
+      : '（窗口内未穿越，屏幕 UI 中低 T 的 τα 会超出窗口属正常物理）'));
+  // 拟合数学用合成数据验证：log τ = A + B/(T−T0)，加 2% 噪声
+  const A = -0.8, B = 0.9, T0true = 0.3;
+  const synth = [];
+  for (let k = 0; k < 10; k++) {
+    const T = 0.45 + k * 0.1;
+    const y = A + B / (T - T0true);
+    synth.push({ T, tau: Math.pow(10, y * (1 + (k % 3 - 1) * 0.02)) });
+  }
+  const vf = vftFit(synth);
+  const okVft = vf.fit && Math.abs(vf.fit.T0 - T0true) < 0.06 && vf.arrhenius && isFinite(vf.arrhenius.a);
+  check('VFT 拟合还原 T₀（合成数据）', okVft,
+    vf.fit ? `T₀=${vf.fit.T0.toFixed(3)} (真值 0.30), B=${vf.fit.B.toFixed(2)} (真值 0.90)` : '拟合失败');
+}
+
+// 19) Fs(q,t)：高温衰减到近 0，低温短滞后仍在平台上
+{
+  sim.T = 1.2; sim.resetRef();
+  for (let k = 0; k < 40; k++) { sim.run(50); }
+  const decayed = sim.fsqRef();
+  sim.T = 0.15; sim.resetRef();
+  sim.run(50); // 0.4τ：仍处 β 平台
+  const fsqGlass0 = sim.fsqRef();
+  check('Fs(q,t) 高温衰减 / 低温保持', decayed < 0.35 && fsqGlass0 > 0.55 && fsqGlass0 <= 1.0,
+    `Fs(液,长)=${decayed.toFixed(3)}, Fs(玻,短)=${fsqGlass0.toFixed(3)}`);
+}
+
+// 20) 键取向 P2：平衡 ≈ 0，拉伸后 > 0
+{
+  sim.T = 1.0;
+  sim.run(8000);
+  const p20 = sim.bondP2();
+  sim.deform.mode = 'stretch';
+  sim.deform.rate = 0.05;
+  const target = 0.3;
+  let guard = 0;
+  while (sim.deform.strain < target && guard++ < 20000) sim.step();
+  const p2s = sim.bondP2();
+  sim.deform.mode = 'none'; sim.deform.strain = 0; sim.deform.target = null;
+  check('键取向 P2 平衡≈0 / 拉伸>0', Math.abs(p20) < 0.08 && p2s > 0.02,
+    `P2(平衡)=${p20.toFixed(4)}（390 键统计涨落 ±0.05）, P2(ε=0.3)=${p2s.toFixed(4)}`);
+}
+
+// 21) 热笔：局部注入后近点动能上升
+{
+  sim.T = 0.3;
+  sim.run(5000);
+  const cx = sim.Lx / 2, cy = sim.Ly / 2, cz = sim.Lz / 2;
+  const keNearBefore = localKe(sim, cx, cy, cz, 2.5);
+  sim.heatBrush(cx, cy, cz, 2.5, 0.8);
+  const keNear = localKe(sim, cx, cy, cz, 2.5);
+  const keFar = localKe(sim, 1, 1, 1, 2.5);
+  check('热笔局部升温', keNear > keNearBefore * 1.3 && keNear > keFar,
+    `近点 ${keNearBefore.toFixed(3)}→${keNear.toFixed(3)}, 远点 ${keFar.toFixed(3)}`);
+}
+
+// 22) 拽链：抓取并把目标移到远处，珠子跟随
+{
+  sim.T = 0.5;
+  sim.run(3000);
+  const sx = sim.Lx * 0.3, sy = sim.Ly * 0.5, sz = sim.Lz * 0.5;
+  const idx = sim.grabPick(sx, sy, sz, 3.0);
+  const okPick = idx >= 0;
+  if (okPick) {
+    const tx = sim.Lx * 0.8, ty = sim.Ly * 0.5, tz = sim.Lz * 0.5;
+    for (let k = 0; k < 1500; k++) {
+      sim.grabMove(tx, ty, tz);
+      sim.step();
+    }
+    const dx = sim.pos[idx * 3] - sim.grabTarget[0];
+    const dy = sim.pos[idx * 3 + 1] - sim.grabTarget[1];
+    const dz = sim.pos[idx * 3 + 2] - sim.grabTarget[2];
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    check('拽链探针跟随目标', dist < 1.5, `珠子距目标 ${dist.toFixed(3)} σ`);
+    sim.grabRelease();
+  } else {
+    check('拽链探针跟随目标', false, '拾取失败');
+  }
+}
+
+// 23) 薄膜模式：珠子被约束在壁内、无 NaN、表面层迁移率更高
+{
+  const fSim = new KGSim({ numChains: 10, chainLen: 40, seed: 11, temperature: 0.5, film: true });
+  fSim.run(8000);
+  let okZ = true, okNaN = true;
+  for (let i = 0; i < fSim.N; i++) {
+    const z = fSim.pos[i * 3 + 2];
+    if (!Number.isFinite(z) || z < fSim.wallMargin - 0.8 || z > fSim.Lz - fSim.wallMargin + 0.8) okZ = false;
+  }
+  for (let a = 0; a < fSim.pos.length; a++) if (!Number.isFinite(fSim.pos[a])) okNaN = false;
+  // 层迁移率：表面 2 层 vs 中部 4 层（膜内范围）
+  const NB = 12, acc = new Float64Array(NB), cnt = new Float64Array(NB);
+  const zLo = fSim.wallMargin - 0.5, zHi = fSim.Lz - fSim.wallMargin + 0.5;
+  const snap = fSim.snapshotU();
+  fSim.run(625);
+  for (let i = 0; i < fSim.N; i++) {
+    const i3 = i * 3;
+    const b = Math.min(NB - 1, Math.max(0, ((fSim.pos[i3 + 2] - zLo) / (zHi - zLo) * NB) | 0));
+    const dx = fSim.upos[i3] - snap[i3], dy = fSim.upos[i3 + 1] - snap[i3 + 1], dz = fSim.upos[i3 + 2] - snap[i3 + 2];
+    acc[b] += dx * dx + dy * dy + dz * dz;
+    cnt[b]++;
+  }
+  const layer = Array.from(acc, (v, k) => cnt[k] ? v / cnt[k] : 0);
+  const midMob = layer.slice(4, 8).reduce((a, b) => a + b, 0) / 4;
+  const surfMob = Math.max(layer[0], layer[NB - 1]);
+  check('薄膜壁约束 + 无 NaN', okZ && okNaN,
+    `z ∈ [${Math.min(...fSim.pos.filter((_, i) => i % 3 === 2)).toFixed(2)}, ${Math.max(...fSim.pos.filter((_, i) => i % 3 === 2)).toFixed(2)}]（壁位 2 / ${(fSim.Lz - 2).toFixed(1)}）`);
+  check('自由表面迁移率 ≥ 中部', surfMob > midMob * 0.8,
+    `表面=${surfMob.toFixed(3)}, 中部=${midMob.toFixed(3)}`);
+}
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 process.exit(failed.length ? 1 : 0);

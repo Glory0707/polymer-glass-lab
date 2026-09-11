@@ -70,7 +70,15 @@ export class KGSim {
     this.npt = opts.npt ?? false;
     this.targetP = opts.targetP ?? 0;
     this.tauP = 1.0;
+    // 薄膜模式：z 向周期边界换成对称软壁（自由表面效应）
+    this.film = opts.film ?? false;
+    this.wallMargin = 2.0; // 壁内缩（σ），壁位于 z = margin 与 z = Lz − margin
     this.virial = 0;
+    // 拖拽探针（微观流变学）：谐振弹簧把被抓珠子拉向目标点
+    this.grabIdx = -1;
+    this.grabTarget = [0, 0, 0];
+    this.grabOff = [0, 0, 0]; // 抓取点相对珠心的偏移，避免拖拽起始抖动
+    this.kGrab = 80;
     // 维里张量分量（应力用）与形变状态（力学轴）
     this.wxx = 0; this.wyy = 0; this.wzz = 0; this.wxy = 0;
     this.deform = { mode: 'none', rate: 0.02, amp: 0.12, freq: 0.5, strain: 0, epsCur: 0, phase: 0, gamma: 0, target: null };
@@ -234,7 +242,9 @@ export class KGSim {
       if (cz >= ncz) cz = ncz - 1; if (cz < 0) cz = 0;
 
       for (let oz = -1; oz <= 1; oz++) {
-        let z2 = cz + oz; if (z2 < 0) z2 += ncz; else if (z2 >= ncz) z2 -= ncz;
+        let z2 = cz + oz;
+        if (this.film) { if (z2 < 0 || z2 >= ncz) continue; }
+        else if (z2 < 0) z2 += ncz; else if (z2 >= ncz) z2 -= ncz;
         for (let oy = -1; oy <= 1; oy++) {
           let y2 = cy + oy; if (y2 < 0) y2 += ncy; else if (y2 >= ncy) y2 -= ncy;
           for (let ox = -1; ox <= 1; ox++) {
@@ -249,7 +259,7 @@ export class KGSim {
                 if (shearOff !== 0) dx -= shearOff * Math.round(dy / Ly);
                 dx -= Lx * Math.round(dx / Lx);
                 dy -= Ly * Math.round(dy / Ly);
-                dz -= Lz * Math.round(dz / Lz);
+                if (!this.film) dz -= Lz * Math.round(dz / Lz);
                 const r2 = dx * dx + dy * dy + dz * dz;
                 const s2ij = (this.sigma[i] + this.sigma[j]) * 0.5;
                 const rc2ij = 1.2599210498948732 * s2ij * s2ij; // (2^(1/6)·σij)²
@@ -290,7 +300,7 @@ export class KGSim {
       if (shearOff !== 0) dx -= shearOff * Math.round(dy / Ly);
       dx -= Lx * Math.round(dx / Lx);
       dy -= Ly * Math.round(dy / Ly);
-      dz -= Lz * Math.round(dz / Lz);
+      if (!this.film) dz -= Lz * Math.round(dz / Lz);
       let r2 = dx * dx + dy * dy + dz * dz;
       if (r2 > 0.98 * R02) r2 = 0.98 * R02; // 数值护栏：log 参数恒为正
       const denom = 1 - r2 / R02;
@@ -311,14 +321,14 @@ export class KGSim {
         const a3 = (i - 1) * 3, i3 = i * 3, b3 = (i + 1) * 3;
         let b1x = p[i3] - p[a3];     b1x -= Lx * Math.round(b1x / Lx);
         let b1y = p[i3 + 1] - p[a3 + 1]; b1y -= Ly * Math.round(b1y / Ly);
-        let b1z = p[i3 + 2] - p[a3 + 2]; b1z -= Lz * Math.round(b1z / Lz);
+        let b1z = p[i3 + 2] - p[a3 + 2]; if (!this.film) b1z -= Lz * Math.round(b1z / Lz);
         let b2x = p[b3] - p[i3];
         let b2y = p[b3 + 1] - p[i3 + 1];
         let b2z = p[b3 + 2] - p[i3 + 2];
         if (shearOff !== 0) b2x -= shearOff * Math.round(b2y / Ly);
         b2x -= Lx * Math.round(b2x / Lx);
         b2y -= Ly * Math.round(b2y / Ly);
-        b2z -= Lz * Math.round(b2z / Lz);
+        if (!this.film) b2z -= Lz * Math.round(b2z / Lz);
         const inv1 = 1 / Math.sqrt(b1x * b1x + b1y * b1y + b1z * b1z);
         const inv2 = 1 / Math.sqrt(b2x * b2x + b2y * b2y + b2z * b2z);
         const n1x = b1x * inv1, n1y = b1y * inv1, n1z = b1z * inv1;
@@ -332,6 +342,16 @@ export class KGSim {
         f[i3] += k * (g1x - g2x); f[i3 + 1] += k * (g1y - g2y); f[i3 + 2] += k * (g1z - g2z);
         f[b3] += k * g2x; f[b3 + 1] += k * g2y; f[b3 + 2] += k * g2z;
         pe += k * (1 - c);
+      }
+    }
+
+    // 薄膜软壁：z ∈ [margin, Lz−margin] 之外的珠子受线性回复力
+    if (this.film) {
+      const zlo = this.wallMargin, zhi = this.Lz - this.wallMargin, kW = 150;
+      for (let i = 0; i < N; i++) {
+        const iz = i * 3 + 2;
+        if (p[iz] < zlo) f[iz] += kW * (zlo - p[iz]);
+        else if (p[iz] > zhi) f[iz] -= kW * (p[iz] - zhi);
       }
     }
 
@@ -381,13 +401,23 @@ export class KGSim {
       if (np < 0) np += this.Ly; else if (np >= this.Ly) np -= this.Ly;
       p[i3 + 1] = np;
       np = p[i3 + 2] + v[i3 + 2] * dt;
-      if (np < 0) np += this.Lz; else if (np >= this.Lz) np -= this.Lz;
+      if (this.film) {
+        if (np < 0.01) np = 0.01; else if (np > this.Lz - 0.01) np = this.Lz - 0.01;
+      } else if (np < 0) np += this.Lz; else if (np >= this.Lz) np -= this.Lz;
       p[i3 + 2] = np;
     }
 
     this._deformStep();
     this._buildCells();
     this._computeForces();
+
+    // 拖拽探针：抓取珠子加指向目标的谐振弹簧
+    if (this.grabIdx >= 0) {
+      const g3 = this.grabIdx * 3;
+      f[g3] += this.kGrab * (this.grabTarget[0] - p[g3]);
+      f[g3 + 1] += this.kGrab * (this.grabTarget[1] - p[g3 + 1]);
+      f[g3 + 2] += this.kGrab * (this.grabTarget[2] - p[g3 + 2]);
+    }
 
     for (let a = 0; a < v.length; a++) v[a] += f[a] * half;
 
@@ -474,11 +504,13 @@ export class KGSim {
   _deformStep() {
     const d = this.deform;
     if (d.mode === 'stretch') {
-      if (d.target != null && d.strain >= d.target) {
+      // 上限保护：ε>2.5 自动反向（平滑卸载），避免盒子退化成针
+      if (d.rate > 0 && d.strain > 2.5) { d.target = 0; d.rate = -Math.abs(d.rate) * 5; }
+      if (d.target != null && ((d.rate > 0 && d.strain >= d.target) || (d.rate < 0 && d.strain <= d.target))) {
         const back = d.target - d.strain;
         this._scaleBox(Math.exp(back), Math.exp(-back / 2), Math.exp(-back / 2));
         d.strain = d.target;
-        d.mode = 'none';
+        if (d.target === 0) { d.rate = Math.abs(d.rate) / 5; d.mode = 'none'; }
         return;
       }
       const f = Math.exp(d.rate * this.dt);
@@ -516,7 +548,9 @@ export class KGSim {
       if (cy >= this.ncy) cy = this.ncy - 1;
       if (cz >= this.ncz) cz = this.ncz - 1;
       for (let oz = -1; oz <= 1; oz++) {
-        let z2 = cz + oz; if (z2 < 0) z2 += this.ncz; else if (z2 >= this.ncz) z2 -= this.ncz;
+        let z2 = cz + oz;
+        if (this.film) { if (z2 < 0 || z2 >= this.ncz) continue; }
+        else if (z2 < 0) z2 += this.ncz; else if (z2 >= this.ncz) z2 -= this.ncz;
         for (let oy = -1; oy <= 1; oy++) {
           let y2 = cy + oy; if (y2 < 0) y2 += this.ncy; else if (y2 >= this.ncy) y2 -= this.ncy;
           for (let ox = -1; ox <= 1; ox++) {
@@ -527,7 +561,7 @@ export class KGSim {
                 const j3 = j * 3;
                 let dx = xi - p[j3];     dx -= Lx * Math.round(dx / Lx);
                 let dy = yi - p[j3 + 1]; dy -= Ly * Math.round(dy / Ly);
-                let dz = zi - p[j3 + 2]; dz -= Lz * Math.round(dz / Lz);
+                let dz = zi - p[j3 + 2]; if (!this.film) dz -= Lz * Math.round(dz / Lz);
                 const r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 < rc2 && r2 > 1e-12) {
                   const inv = 1 / Math.sqrt(r2);
@@ -559,7 +593,6 @@ export class KGSim {
         const cr = C[m * N + i] / n_i, ci = S[m * N + i] / n_i;
         acc += (m === 0 ? 1 : 2) * (cr * cr + ci * ci);
       }
-      const w = m === 0 ? 1 : 2;
       q6[i] = Math.sqrt(Math.max(0, norm * acc));
       mean += q6[i];
     }
@@ -587,7 +620,9 @@ export class KGSim {
       if (cx >= ncx) cx = ncx - 1; if (cy >= ncy) cy = ncy - 1; if (cz >= ncz) cz = ncz - 1;
       let sum = 0, cnt = 0;
       for (let oz = -1; oz <= 1; oz++) {
-        let z2 = cz + oz; if (z2 < 0) z2 += ncz; else if (z2 >= ncz) z2 -= ncz;
+        let z2 = cz + oz;
+        if (this.film) { if (z2 < 0 || z2 >= ncz) continue; }
+        else if (z2 < 0) z2 += ncz; else if (z2 >= ncz) z2 -= ncz;
         for (let oy = -1; oy <= 1; oy++) {
           let y2 = cy + oy; if (y2 < 0) y2 += ncy; else if (y2 >= ncy) y2 -= ncy;
           for (let ox = -1; ox <= 1; ox++) {
@@ -693,6 +728,101 @@ export class KGSim {
     }
     return s / this.N;
   }
+
+  /**
+   * 自中间散射函数 Fs(q, τ)：q 取主结构峰 q* ≈ 6.7 σ⁻¹（ρ=1 的 KG 熔体），
+   * 三个晶轴方向平均（等效粉末平均），对应中子/X 射线散射实验。
+   */
+  fsqRef() {
+    const q = 6.7;
+    const u = this.upos, r = this.refPos;
+    let s = 0;
+    for (let i = 0; i < this.N; i++) {
+      const i3 = i * 3;
+      const dx = u[i3] - r[i3], dy = u[i3 + 1] - r[i3 + 1], dz = u[i3 + 2] - r[i3 + 2];
+      s += Math.cos(q * dx) + Math.cos(q * dy) + Math.cos(q * dz);
+    }
+    return s / (3 * this.N);
+  }
+
+  /**
+   * 键取向序参量 P2（Hermans 取向因子）：链键相对 x 轴（拉伸轴）的
+   * (3⟨cos²θ⟩ − 1)/2。无取向时为 0，沿 x 取向时趋正。应力光学对应。
+   */
+  bondP2() {
+    const p = this.pos;
+    const { Lx, Ly, Lz, film } = this;
+    const bp = this.bondPairs;
+    let s = 0;
+    for (let b = 0; b < bp.length; b += 2) {
+      const i3 = bp[b] * 3, j3 = bp[b + 1] * 3;
+      let dx = p[i3] - p[j3];
+      let dy = p[i3 + 1] - p[j3 + 1];
+      let dz = p[i3 + 2] - p[j3 + 2];
+      dx -= Lx * Math.round(dx / Lx);
+      dy -= Ly * Math.round(dy / Ly);
+      if (!film) dz -= Lz * Math.round(dz / Lz);
+      const inv = 1 / Math.sqrt(dx * dx + dy * dy + dz * dz + 1e-12);
+      const c2 = (dx * inv) * (dx * inv);
+      s += 3 * c2 - 1;
+    }
+    return s / (2 * (bp.length / 2));
+  }
+
+  /**
+   * 热笔：在 (x,y,z) 半径 R 内按高斯权重注入动能（各分量速度加噪 √(ΔT·w)），
+   * 局部温度抬升 ΔT·w。Langevin 恒温器随后把热量耗散到整箱——热扩散直接可视。
+   */
+  heatBrush(x, y, z, R, dT) {
+    const p = this.pos, v = this.vel;
+    const { Lx, Ly, Lz, film } = this;
+    const R2 = R * R;
+    let hit = 0;
+    for (let i = 0; i < this.N; i++) {
+      const i3 = i * 3;
+      let dx = p[i3] - x;
+      let dy = p[i3 + 1] - y;
+      let dz = p[i3 + 2] - z;
+      dx -= Lx * Math.round(dx / Lx);
+      dy -= Ly * Math.round(dy / Ly);
+      if (!film) dz -= Lz * Math.round(dz / Lz);
+      const r2 = dx * dx + dy * dy + dz * dz;
+      if (r2 >= R2) continue;
+      const w = 1 - r2 / R2;
+      const s = Math.sqrt(dT * w);
+      v[i3] += this._gauss() * s;
+      v[i3 + 1] += this._gauss() * s;
+      v[i3 + 2] += this._gauss() * s;
+      hit++;
+    }
+    return hit;
+  }
+
+  /** 抓取：拾取距点击点最近的珠子（抓取半径内），记录偏移防跳变 */
+  grabPick(x, y, z, r = 2.0) {
+    const p = this.pos;
+    let best = -1, bestD2 = r * r;
+    for (let i = 0; i < this.N; i++) {
+      const i3 = i * 3;
+      const dx = p[i3] - x, dy = p[i3 + 1] - y, dz = p[i3 + 2] - z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < bestD2) { bestD2 = d2; best = i; }
+    }
+    if (best < 0) { this.grabIdx = -1; return -1; }
+    const b3 = best * 3;
+    this.grabIdx = best;
+    this.grabOff = [p[b3] - x, p[b3 + 1] - y, p[b3 + 2] - z];
+    this.grabTarget = [x + this.grabOff[0], y + this.grabOff[1], z + this.grabOff[2]];
+    return best;
+  }
+
+  grabMove(x, y, z) {
+    if (this.grabIdx < 0) return;
+    const cl = (v, hi) => Math.min(hi - 0.05, Math.max(0.05, v));
+    this.grabTarget = [cl(x + this.grabOff[0], this.Lx), cl(y + this.grabOff[1], this.Ly), cl(z + this.grabOff[2], this.Lz)];
+  }
+
+  grabRelease() { this.grabIdx = -1; }
 
   /** 最长键长（数值稳定性体检指标） */
   maxBondLength() {

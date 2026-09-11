@@ -2,14 +2,15 @@
  * main.js — 渲染、HUD 与 UI 接线
  * MD 内核运行在 Web Worker（sim.worker.js），本线程只做渲染与交互。
  */
-import { GlassRenderer } from './renderer.js?v=32';
-import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot } from './plots.js?v=32';
-import { THERMAL_LUT } from './analysis.js?v=32';
+import * as THREE from 'three';
+import { GlassRenderer } from './renderer.js?v=34';
+import { drawMSDPlot, drawHistoryPlot, drawA2Plot, drawVHPlot, drawStressPlot, drawProtoPlot, drawVFTPlot, drawFsqPlot, drawProfilePlot } from './plots.js?v=34';
+import { THERMAL_LUT } from './analysis.js?v=34';
 
 const $ = (id) => document.getElementById(id);
 const T_MIN = 0.05, T_MAX = 1.5;
 
-const worker = new Worker(new URL('./sim.worker.js?v=32', import.meta.url), { type: 'module' });
+const worker = new Worker(new URL('./sim.worker.js?v=34', import.meta.url), { type: 'module' });
 
 /* 渲染所需的场景镜像（由 worker 消息填充） */
 const view = {
@@ -18,9 +19,13 @@ const view = {
   N: 0,
   Lx: 1, Ly: 1, Lz: 1,
   bondPairs: new Int32Array(0),
-  msdPts: [], a2Pts: [], ghosts: [], history: [],
+  msdPts: [], a2Pts: [], fsqPts: [], ghosts: [], history: [],
+  orientPts: [],
+  vftPts: [], vftFit: null, vftArr: null,
+  mobProf: null,
   refT: 1.0, fit: null, bins: [],
   density: 1.0,
+  film: false,
 };
 
 const state = {
@@ -41,6 +46,8 @@ const state = {
   defRate: 0.02,
   defAmp: 0.12,
   defFreq: 0.5,
+  film: false,
+  tool: null, // null | 'brush' | 'drag'
 };
 
 let renderer = null;
@@ -86,11 +93,17 @@ worker.onmessage = (e) => {
     case 'ready': {
       view.N = m.N;
       view.Lx = m.Lx; view.Ly = m.Ly; view.Lz = m.Lz;
+      view.film = !!m.film;
+      state.film = view.film;
       view.sigma = new Float32Array(m.sigma);
       view.bondPairs = new Int32Array(m.bondPairs);
       view.pos = new Float32Array(m.N * 3);
       if (renderer) { renderer.dispose(); renderer = null; }
       renderer = new GlassRenderer($('viewport'), view);
+      renderer.setFilm(view.film);
+      $('profFig').hidden = !view.film;
+      $('nptChk').disabled = view.film; // 薄膜壁的维里未计入压强，NPT 不适用
+      if (view.film) { state.npt = false; }
       applyChainColors();
       hideAnneal();
       $('seedVal').textContent = String(state.seed);
@@ -115,6 +128,7 @@ worker.onmessage = (e) => {
       view.chi = m.chi ? new Float32Array(m.chi) : view.chi;
       view.mob = m.mob ? new Float32Array(m.mob) : view.mob;
       if (m.vhBins) { view.vhBins = new Float32Array(m.vhBins); view.vhMax = m.vhMax; view.vhN = m.vhN; }
+      if (m.mobProf) view.mobProf = new Float64Array(m.mobProf);
       view.density = m.stats.density;
       // 盒子尺寸变化（密度调整/NPT）：同步括号框与键镜像基准
       if (renderer && (Math.abs(m.stats.Lx - view.Lx) > 1e-6 || Math.abs(m.stats.Ly - view.Ly) > 1e-6 || Math.abs(m.stats.Lz - view.Lz) > 1e-6)) {
@@ -138,17 +152,25 @@ worker.onmessage = (e) => {
         });
       }
       if (frameNo % 4 === 0) drawA2Plot($('a2Plot'), view.a2Pts);
-      if (frameNo % 4 === 2) drawStressPlot($('stressPlot'), view.stressPts);
+      if (frameNo % 4 === 2) drawStressPlot($('stressPlot'), view.stressPts, view.orientPts);
       if (frameNo % 4 === 3) drawVHPlot($('vhPlot'), view.vhBins, view.vhMax, view.msdPts);
       if (frameNo % 4 === 1) drawProtoPlot($('protoPlot'), view.protoPts);
+      if (frameNo % 5 === 2) drawVFTPlot($('vftPlot'), view.vftPts, view.vftFit, view.vftArr);
+      if (frameNo % 5 === 3) drawFsqPlot($('fsqPlot'), view.fsqPts);
+      if (frameNo % 5 === 4 && view.film) drawProfilePlot($('profPlot'), view.mobProf);
       frameNo++;
       break;
     }
     case 'samples': {
       view.stressPts = m.stressPts || [];
+      view.orientPts = m.orientPts || [];
       view.protoPts = m.protoPts || [];
       view.msdPts = m.msdPts;
       view.a2Pts = m.a2Pts;
+      view.fsqPts = m.fsqPts || [];
+      view.vftPts = m.vftPts || [];
+      view.vftFit = m.vftFit || null;
+      view.vftArr = m.vftArr || null;
       view.ghosts = m.ghosts;
       view.history = m.history;
       view.refT = m.refT;
@@ -239,6 +261,7 @@ function updateStats(st) {
   $('vTau').textContent = st.tau.toFixed(0);
   $('vFps').textContent = Math.round(state.perf.fps) + 'fps';
   $('densityVal').textContent = st.density.toFixed(2);
+  $('strainVal').textContent = Math.abs(st.strain) < 0.005 ? '—' : (st.strain > 0 ? '+' : '') + st.strain.toFixed(2);
 }
 
 function peTicks() {
@@ -333,9 +356,126 @@ function bindUI() {
     state.smallFrac = parseFloat(e.target.value);
     sendRebuild();
   });
+  $('geomSel').addEventListener('change', (e) => {
+    state.film = e.target.value === 'film';
+    if (state.film) { state.npt = false; $('nptChk').checked = false; }
+    sendRebuild();
+  });
   $('densitySlider').addEventListener('input', (e) => {
     wsend({ cmd: 'density-target', v: parseFloat(e.target.value) });
   });
+
+  // 切片视图
+  const sliceChk = $('sliceChk'), sliceSlider = $('sliceSlider');
+  sliceChk.addEventListener('change', () => {
+    sliceSlider.hidden = !sliceChk.checked;
+    if (renderer) renderer.setSlice(sliceChk.checked, sliceSlider.value / 100);
+  });
+  sliceSlider.addEventListener('input', () => {
+    if (renderer) renderer.setSlice(sliceChk.checked, sliceSlider.value / 100);
+  });
+
+  // ---- 上手工具：热笔 / 拖拽（互斥，激活时接管 viewport 指针） ----
+  const setTool = (tool) => {
+    state.tool = state.tool === tool ? null : tool;
+    $('btnBrush').classList.toggle('active', state.tool === 'brush');
+    $('btnDrag').classList.toggle('active', state.tool === 'drag');
+    if (renderer) {
+      renderer.controls.enabled = state.tool == null;
+      renderer.renderer.domElement.style.cursor = state.tool == null ? 'grab' : state.tool === 'brush' ? 'crosshair' : 'grabbing';
+    }
+    if (state.tool !== 'drag' && dragging) { dragging = false; wsend({ cmd: 'grab-release' }); }
+  };
+  $('btnBrush').addEventListener('click', () => setTool('brush'));
+  $('btnDrag').addEventListener('click', () => setTool('drag'));
+
+  const ndc = new THREE.Vector2();
+  const raycaster = new THREE.Raycaster();
+  const dragPlane = new THREE.Plane();
+  const hitPt = new THREE.Vector3();
+  let dragging = false;
+  let lastPointerSend = 0;
+
+  const eventToRay = (e) => {
+    const rect = renderer.renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, renderer.camera);
+    return raycaster.ray;
+  };
+  /** 射线与过 boxCenter、面向相机的平面求交，再钳进盒内 */
+  const rayToBoxPoint = (ray) => {
+    if (!renderer) return null;
+    const c = new THREE.Vector3(view.Lx / 2, view.Ly / 2, view.Lz / 2);
+    const n = renderer.camera.getWorldDirection(new THREE.Vector3()).negate();
+    dragPlane.setFromNormalAndCoplanarPoint(n, c);
+    if (!ray.intersectPlane(dragPlane, hitPt)) return null;
+    hitPt.set(
+      Math.min(view.Lx - 0.3, Math.max(0.3, hitPt.x)),
+      Math.min(view.Ly - 0.3, Math.max(0.3, hitPt.y)),
+      Math.min(view.Lz - 0.3, Math.max(0.3, hitPt.z))
+    );
+    return hitPt;
+  };
+  /** 拾取射线最近的珠子：遍历投影距离（N ≤ 4800，主线程可负担） */
+  const pickBead = (ray) => {
+    let best = -1, bestPerp = 2.0;
+    const o = ray.origin, d = ray.direction;
+    const vx = new THREE.Vector3();
+    for (let i = 0; i < view.N; i++) {
+      const i3 = i * 3;
+      vx.set(view.pos[i3] - o.x, view.pos[i3 + 1] - o.y, view.pos[i3 + 2] - o.z);
+      const t = vx.dot(d);
+      if (t < 0) continue;
+      const px = o.x + d.x * t - view.pos[i3];
+      const py = o.y + d.y * t - view.pos[i3 + 1];
+      const pz = o.z + d.z * t - view.pos[i3 + 2];
+      const perp = Math.sqrt(px * px + py * py + pz * pz);
+      if (perp < bestPerp) { bestPerp = perp; best = i; }
+    }
+    return best;
+  };
+  const attachPointer = () => {
+    const el = $('viewport');
+    el.addEventListener('pointerdown', (e) => {
+      if (!state.tool || !renderer) return;
+      const ray = eventToRay(e);
+      const pt = rayToBoxPoint(ray);
+      if (!pt) return;
+      e.preventDefault();
+      if (state.tool === 'brush') {
+        wsend({ cmd: 'heat-brush', x: pt.x, y: pt.y, z: pt.z, r: 2.5, dT: 0.18 });
+        lastPointerSend = performance.now();
+      } else {
+        const idx = pickBead(ray);
+        if (idx >= 0) {
+          dragging = true;
+          wsend({ cmd: 'grab', x: view.pos[idx * 3], y: view.pos[idx * 3 + 1], z: view.pos[idx * 3 + 2], r: 0.5 });
+        }
+      }
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!state.tool || !renderer) return;
+      const now = performance.now();
+      if (now - lastPointerSend < 55) return;
+      const ray = eventToRay(e);
+      const pt = rayToBoxPoint(ray);
+      if (!pt) return;
+      if (state.tool === 'brush' && e.buttons & 1) {
+        wsend({ cmd: 'heat-brush', x: pt.x, y: pt.y, z: pt.z, r: 2.5, dT: 0.12 });
+        lastPointerSend = now;
+      } else if (state.tool === 'drag' && dragging) {
+        wsend({ cmd: 'grab-move', x: pt.x, y: pt.y, z: pt.z });
+        lastPointerSend = now;
+      }
+    });
+    const up = () => {
+      if (dragging) { dragging = false; wsend({ cmd: 'grab-release' }); }
+    };
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointerleave', up);
+  };
+  attachPointer();
+
 
   $('nptChk').addEventListener('change', (e) => {
     state.npt = e.target.checked;
@@ -449,7 +589,8 @@ function sendRebuild() {
     cmd: 'rebuild',
     numChains: state.numChains, seed: state.seed,
     temperature: state.temperature, smallFrac: state.smallFrac,
-    stiffness: state.stiffness, npt: state.npt, targetP: state.targetP,
+    stiffness: state.stiffness, npt: state.npt && !state.film, targetP: state.targetP,
+    film: state.film,
     annealSteps: 4000,
   });
 }
@@ -480,6 +621,14 @@ function exportCsv() {
   L.push('# nongaussian-a2');
   L.push('tau,a2');
   for (const [t, a] of view.a2Pts) L.push(t.toFixed(4) + ',' + a.toPrecision(6));
+  L.push('');
+  L.push('# fsq-tau (q*=6.7)');
+  L.push('tau,fsq');
+  for (const [t, v] of view.fsqPts) L.push(t.toFixed(4) + ',' + v.toPrecision(6));
+  L.push('');
+  L.push('# relaxation-time-vft');
+  L.push('T,tau_alpha');
+  for (const p of view.vftPts) L.push(p.T.toFixed(3) + ',' + p.tau.toPrecision(6));
   download('polymer-glass-' + stamp() + '.csv', L.join(String.fromCharCode(10)), 'text/csv');
 }
 
@@ -493,7 +642,10 @@ function exportJson() {
     },
     msdTau: { refT: view.refT, pts: view.msdPts },
     nongaussianA2: view.a2Pts,
+    fsqTau: view.fsqPts,
+    relaxationTimes: view.vftPts,
     stressResponse: view.stressPts,
+    bondOrientation: view.orientPts,
     memoryProtocol: view.protoPts,
     thermalHistory: view.history,
   };
@@ -510,6 +662,64 @@ function frame(now) {
   if (renderer) renderer.update({ showBonds: state.showBonds, showBox: $('boxChk').checked });
 }
 
+/* ---------------- 导览模式 ---------------- */
+let tourTimer = null;
+function stopTour(finished = false) {
+  if (!tourTimer) return;
+  clearTimeout(tourTimer);
+  tourTimer = null;
+  $('tourBar').hidden = true;
+  $('btnTour').textContent = '导览';
+  setMode('free');
+  if (finished) return;
+}
+function tourStep(steps, idx) {
+  if (idx >= steps.length) { stopTour(true); return; }
+  const s = steps[idx];
+  $('tourCaption').innerHTML = s.cap;
+  s.act();
+  tourTimer = setTimeout(() => tourStep(steps, idx + 1), s.dur);
+}
+function startTour() {
+  if (tourTimer) { stopTour(); return; }
+  $('btnTour').textContent = '停止';
+  $('tourBar').hidden = false;
+  $('figs').classList.add('open');
+  const steps = [
+    {
+      cap: '<em>① 高温熔体</em> — 链段自由扩散，MSD 沿斜率 1 直线增长',
+      dur: 9000,
+      act: () => { $('btnMelt').click(); wsend({ cmd: 'speed', v: Math.max(state.speed, 24) }); },
+    },
+    {
+      cap: '<em>② 缓慢降温</em> — 看右边「热历史」：MSD@20τ 出现拐点处即 Tg',
+      dur: 42000,
+      act: () => setMode('cool'),
+    },
+    {
+      cap: '<em>③ 弛豫时间发散</em> — 「弛豫时间」图中 τp 对 1/T 向上弯（super-Arrhenius），VFT 拟合给出 T₀',
+      dur: 8000,
+      act: () => {},
+    },
+    {
+      cap: '<em>④ 急冷深冻</em> — 结构被冻结：MSD 压到平台，非高斯 α₂ 抬升（动力学变"异质"）',
+      dur: 9000,
+      act: () => $('btnQuench').click(),
+    },
+    {
+      cap: '<em>⑤ 记忆实验</em> — 升温-降温-回温的温度阶梯：势能如何弛豫取决于它经历过什么（Kovacs 记忆）',
+      dur: 26000,
+      act: () => $('btnProto').click(),
+    },
+    {
+      cap: '导览结束 — 温度滑块、热笔、拖拽、切片都归你玩',
+      dur: 6000,
+      act: () => { wsend({ cmd: 'protocol-stop' }); },
+    },
+  ];
+  tourStep(steps, 0);
+}
+
 /* ---------------- 启动 ---------------- */
 function boot() {
   window.addEventListener('error', (e) => {
@@ -522,6 +732,8 @@ function boot() {
     sendRebuild();
     requestAnimationFrame(frame);
     $('repoLink').href = 'https://github.com/Glory0707/polymer-glass-lab';
+    $('btnTour').addEventListener('click', startTour);
+    $('tourStop').addEventListener('click', () => { wsend({ cmd: 'protocol-stop' }); stopTour(); });
   } catch (err) {
     showFatal(err);
   }

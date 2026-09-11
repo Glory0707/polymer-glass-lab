@@ -6,7 +6,7 @@
   <title>玻璃化转变 · 一场降温实验</title>
   <meta name="description" content="把熔体降温，看链段冻进玻璃：Kremer–Grest 珠簧模型的实时分子动力学，浏览器里跑。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23131a26'/><text x='5' y='23' font-family='Georgia,serif' font-weight='700' font-size='17' fill='%23e8a33d'>Tg</text></svg>" />
-  <link rel="stylesheet" href="./src/style.css?v=32" />
+  <link rel="stylesheet" href="./src/style.css?v=34" />
   <script type="importmap">
     {
       "imports": {
@@ -26,6 +26,7 @@
     <span id="mark">Tg</span>
     <span class="spacer"></span>
     <nav id="topnav">
+      <button id="btnTour" class="ghostbtn">导览</button>
       <button id="figsToggle" class="ghostbtn">曲线</button>
       <a class="ghostbtn" href="https://github.com/Glory0707/polymer-glass-lab" target="_blank" rel="noopener" id="repoLink">GitHub</a>
     </nav>
@@ -53,6 +54,9 @@
     <button id="btnMelt" class="pill">熔化</button>
     <button id="btnPause" class="pill">暂停</button>
     <span class="vsep"></span>
+    <button id="btnBrush" class="pill" title="点击/涂抹注入局部热量">热笔</button>
+    <button id="btnDrag" class="pill" title="抓住一根链拖着走">拖拽</button>
+    <span class="vsep"></span>
     <button id="paramsToggle" class="pill">⚙ 样品</button>
   </div>
 
@@ -76,6 +80,12 @@
       </div>
       <div class="kv"><span class="k">密度</span><span class="spacer"></span><output id="densityVal">1.00</output><span class="unit">σ⁻³</span></div>
       <input type="range" id="densitySlider" min="0.6" max="1.3" step="0.01" value="1.0" />
+      <div class="kv"><span class="k">几何</span><span class="spacer"></span>
+        <select id="geomSel">
+          <option value="bulk" selected>本体（周期盒）</option>
+          <option value="film">自由表面薄膜</option>
+        </select>
+      </div>
       <div class="kv"><span class="k">种子</span><span class="spacer"></span><span id="seedVal" class="mini mono">—</span>
         <button id="btnNew" class="pill mini-pill">新样本</button>
       </div>
@@ -129,6 +139,10 @@
       <div class="kv"><span class="k">串</span><span class="spacer"></span>
         <label class="chk"><input type="checkbox" id="stringsChk" />合作串</label>
       </div>
+      <div class="kv"><span class="k">切片</span><span class="spacer"></span>
+        <label class="chk"><input type="checkbox" id="sliceChk" />薄片</label>
+      </div>
+      <input type="range" id="sliceSlider" min="0" max="100" value="50" hidden />
     </div>
   </div>
 
@@ -155,6 +169,14 @@
       <canvas id="msdPlot"></canvas>
     </figure>
     <figure>
+      <figcaption><span>弛豫时间</span><span class="mini">VFT · super-Arrhenius</span></figcaption>
+      <canvas id="vftPlot"></canvas>
+    </figure>
+    <figure>
+      <figcaption><span>散射弛豫</span><span class="mini">Fs(q*, τ) · 两步弛豫</span></figcaption>
+      <canvas id="fsqPlot"></canvas>
+    </figure>
+    <figure>
       <figcaption><span>热历史</span><span class="mini">温度扫描 · Tg 拐点</span></figcaption>
       <canvas id="histPlot"></canvas>
     </figure>
@@ -167,8 +189,12 @@
       <canvas id="vhPlot"></canvas>
     </figure>
     <figure>
-      <figcaption><span>力学响应</span><span class="mini">偏应力 – 应变</span></figcaption>
+      <figcaption><span>力学响应</span><span class="mini">应力 · 取向 P2 – 应变</span></figcaption>
       <canvas id="stressPlot"></canvas>
+    </figure>
+    <figure id="profFig" hidden>
+      <figcaption><span>薄膜剖面</span><span class="mini">层分辨迁移率</span></figcaption>
+      <canvas id="profPlot"></canvas>
     </figure>
     <figure>
       <figcaption><span>记忆实验 <span class="mini">温度阶梯</span></span><span class="mini" id="protoState"></span></figcaption>
@@ -189,6 +215,12 @@
 
   <div id="anneal" hidden>制备样品 · 退火 <span id="annealPct">0%</span></div>
 
+  <!-- 导览字幕 + 工具提示 -->
+  <div id="tourBar" hidden>
+    <span id="tourCaption"></span>
+    <button id="tourStop" class="pill mini-pill">停止导览</button>
+  </div>
+
   <div id="fatal" hidden>
     <div>出错了：<span id="fatalMsg"></span></div>
   </div>
@@ -201,6 +233,6 @@
       if (el) { el.textContent = msg; document.getElementById('fatal').hidden = false; }
     }, true);
   </script>
-  <script type="module" src="./src/main.js?v=32"></script>
+  <script type="module" src="./src/main.js?v=34"></script>
 </body>
 </html>

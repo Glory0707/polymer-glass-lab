@@ -91,6 +91,54 @@ export function twoSegmentFit(bins) {
   };
 }
 
+/**
+ * 从 MSD(τ) 曲线提取 α 弛豫时间 τα：MSD 首次穿越 1 σ² 的时刻（log-log 插值）。
+ * 未穿越（玻璃态窗口内 MSD < 1）返回 null。
+ */
+export function tauFromMsd(pts) {
+  if (!pts || pts.length < 2) return null;
+  for (let k = 1; k < pts.length; k++) {
+    const [t0, m0] = pts[k - 1], [t1, m1] = pts[k];
+    if (m0 >= 1) return t0;
+    if (m1 >= 1 && m1 > m0) {
+      const f = (Math.log(1) - Math.log(m0)) / (Math.log(m1) - Math.log(m0));
+      return t0 + f * (t1 - t0);
+    }
+  }
+  return null;
+}
+
+/**
+ * VFT 拟合：log10(τ) = A + B/(T − T0)。
+ * 枚举 T0 ∈ [0.02, Tmin−0.02] 对每个 T0 做线性回归，取 SSE 最小者。
+ * 同时返回高温段的 Arrhenius 直线（对照"直"与"弯"）。
+ * 点数不足或无曲率时 fit 为 null，但仍返回 points 供作图。
+ */
+export function vftFit(pts) {
+  const points = pts
+    .filter((p) => p.tau > 0 && isFinite(p.tau) && p.T > 0.06)
+    .map((p) => ({ T: p.T, y: Math.log10(p.tau), x: 1 / p.T }))
+    .sort((a, b) => a.T - b.T);
+  if (points.length < 5) return { points, fit: null };
+
+  const tMin = points[0].T;
+  let best = null;
+  for (let i = 0; i < 60; i++) {
+    const T0 = 0.02 + (i / 60) * Math.max(0.05, tMin - 0.06);
+    const xs = points.map((p) => 1 / (p.T - T0));
+    const f = linFit(xs, points.map((p) => p.y));
+    if (!best || f.sse < best.f.sse) best = { T0, f };
+  }
+  // Arrhenius 对照：只用高温一半的点（那里接近直线）
+  const hi = points.slice(Math.floor(points.length / 2));
+  const arr = hi.length >= 3 ? linFit(hi.map((p) => p.x), hi.map((p) => p.y)) : null;
+  return {
+    points,
+    fit: best ? { A: best.f.b, B: best.f.a, T0: best.T0 } : null,
+    arrhenius: arr ? { a: arr.a, b: arr.b } : null,
+  };
+}
+
 // 热成像色标：深钢蓝(冻结) → 冰白 → 琥珀(活跃)。整页只讲冷热一件事
 const THERMAL = [
   [0.055, 0.16, 0.30],   // 深钢蓝

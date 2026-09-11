@@ -351,6 +351,24 @@ input[type="range"]::-moz-range-thumb {
 }
 #fatal[hidden] { display: none; }
 
+/* 导览字幕条：底部居中，悬浮于温度轨之上 */
+#tourBar {
+  position: fixed; left: 50%; bottom: 118px;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px;
+  max-width: min(640px, 88vw);
+  background: rgba(10, 13, 20, 0.88);
+  border: 1px solid rgba(232, 163, 61, 0.35);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 12.5px; color: var(--ink); letter-spacing: 0.04em;
+  backdrop-filter: blur(12px);
+  z-index: 30;
+  animation: rise 0.4s cubic-bezier(.22,.8,.3,1) both;
+}
+#tourBar[hidden] { display: none; }
+#tourCaption em { color: var(--accent); font-style: normal; }
+
 @keyframes rise {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: none; }

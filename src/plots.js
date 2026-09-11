@@ -3,7 +3,7 @@
  *  1) MSD–τ 双对数曲线（当前温度实时 + 历史温度幽灵曲线 + 扩散参考线）
  *  2) 热历史图：固定滞后窗口 MSD 与每珠势能 vs 温度，两段式拟合标注 Tg
  */
-import { tColorCss, thermal } from './analysis.js?v=32';
+import { tColorCss, thermal } from './analysis.js?v=34';
 
 /** 曲线用：热成像提亮，保证深底可读 */
 function curveColor(T, alpha = 1) {
@@ -376,9 +376,206 @@ export function drawHistoryPlot(canvas, bins, fit, opts = {}) {
 }
 
 /**
- * 力学响应图：单轴/循环为 σ–ε
+ * VFT 图：log10(τα) 对 1/T。super-Arrhenius 上弯 = 玻璃化本质；
+ * 白虚线 VFT 拟合 log τ = A + B/(T−T0)，灰虚线高温段 Arrhenius 对照。
  */
-export function drawStressPlot(canvas, pts) {
+export function drawVFTPlot(canvas, points, fit, arrhenius) {
+  const g = prep(canvas);
+  if (!g) return;
+  const { ctx, w, h } = g;
+  const m = { l: 44, r: 12, t: 12, b: 26 };
+  const pw = w - m.l - m.r, ph = h - m.t - m.b;
+  const font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+
+  if (!points || points.length < 2) {
+    ctx.fillStyle = 'rgba(233,235,242,0.35)';
+    ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('降温扫描中自动积累 τp(T) 数据点', m.l + pw / 2, m.t + ph / 2);
+    return;
+  }
+  const xs = points.map((p) => 1 / p.T);
+  const ys = points.map((p) => p.y);
+  let xlo = Math.min(...xs), xhi = Math.max(...xs);
+  let ylo = Math.min(...ys), yhi = Math.max(...ys);
+  const padX = (xhi - xlo) * 0.08 + 0.02, padY = (yhi - ylo) * 0.12 + 0.05;
+  xlo -= padX; xhi += padX; ylo -= padY; yhi += padY;
+  const X = (x) => m.l + (x - xlo) / (xhi - xlo) * pw;
+  const Y = (y) => m.t + (1 - (y - ylo) / (yhi - ylo)) * ph;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillStyle = 'rgba(233,235,242,0.42)';
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  for (const xv of niceTicks(xlo, xhi, 4)) {
+    const x = X(xv);
+    ctx.beginPath(); ctx.moveTo(x, m.t); ctx.lineTo(x, m.t + ph); ctx.stroke();
+    ctx.fillText(xv.toFixed(1), x, h - m.b + 14);
+  }
+  ctx.textAlign = 'right';
+  for (const yv of niceTicks(ylo, yhi, 3)) {
+    const y = Y(yv);
+    ctx.beginPath(); ctx.moveTo(m.l, y); ctx.lineTo(m.l + pw, y); ctx.stroke();
+    ctx.fillText(yv.toFixed(1), m.l - 5, y + 3);
+  }
+
+  // Arrhenius 对照线（高温段直线外推）
+  if (arrhenius) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+    poly(ctx, [[xlo, arrhenius.a * xlo + arrhenius.b], [xhi, arrhenius.a * xhi + arrhenius.b]], X, Y);
+    ctx.setLineDash([]);
+  }
+
+  // VFT 拟合曲线（全温区）
+  if (fit) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 4]);
+    const pts = [];
+    for (let k = 0; k <= 50; k++) {
+      const x = xlo + (xhi - xlo) * k / 50;
+      const T = 1 / x;
+      if (T > fit.T0 + 0.004) pts.push([x, fit.A + fit.B / (T - fit.T0)]);
+    }
+    poly(ctx, pts, X, Y);
+    ctx.setLineDash([]);
+  }
+
+  // 数据点（按温度热成像着色）
+  for (const p of points) {
+    ctx.fillStyle = curveColor(p.T, 0.95);
+    ctx.beginPath();
+    ctx.arc(X(1 / p.T), Y(p.y), 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = 'rgba(233,235,242,0.55)';
+  ctx.font = font;
+  ctx.textAlign = 'left';
+  ctx.fillText('log₁₀ τp', m.l + 4, m.t + 2);
+  ctx.textAlign = 'right';
+  ctx.fillText('1/T', m.l + pw - 2, h - m.b + 14);
+  if (fit) {
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText(`VFT: T₀ = ${fit.T0.toFixed(2)}`, m.l + pw - 4, m.t + 12);
+  }
+}
+
+function niceTicks(lo, hi, n) {
+  const span = hi - lo;
+  if (span <= 0) return [lo];
+  const step = Math.pow(10, Math.floor(Math.log10(span / n)));
+  const err = span / n / step;
+  const mult = err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1;
+  const s = step * mult;
+  const out = [];
+  for (let v = Math.ceil(lo / s) * s; v <= hi + 1e-9; v += s) out.push(+v.toFixed(6));
+  return out;
+}
+
+/**
+ * 自中间散射函数 Fs(q*, τ)：半对数横轴，两步弛豫（β 平台 → α 衰减）。
+ * 1/e 参考线给出 τα 的图解定义。
+ */
+export function drawFsqPlot(canvas, pts) {
+  const g = prep(canvas);
+  if (!g) return;
+  const { ctx, w, h } = g;
+  const m = { l: 40, r: 12, t: 12, b: 26 };
+  const pw = w - m.l - m.r, ph = h - m.t - m.b;
+  const font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+
+  if (!pts || pts.length < 2) {
+    ctx.fillStyle = 'rgba(233,235,242,0.35)';
+    ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('采样中…', m.l + pw / 2, m.t + ph / 2);
+    return;
+  }
+  const maxTau = Math.max(...pts.map((p) => p[0])) * 1.25;
+  const lx = Math.log10(Math.max(maxTau, 10));
+  const X = (t) => m.l + Math.log10(Math.max(t, 1)) / lx * pw;
+  const Y = (v) => m.t + (1 - Math.min(1, Math.max(-0.05, v))) * ph;
+
+  // 1/e 参考线
+  ctx.strokeStyle = 'rgba(255,107,94,0.45)';
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(m.l, Y(1 / Math.E)); ctx.lineTo(m.l + pw, Y(1 / Math.E)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,107,94,0.75)';
+  ctx.font = font;
+  ctx.textAlign = 'left';
+  ctx.fillText('1/e（τα 定义）', m.l + 4, Y(1 / Math.E) - 4);
+
+  ctx.strokeStyle = '#f2f4fa';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  pts.forEach(([t, v], i) => (i === 0 ? ctx.moveTo(X(t), Y(v)) : ctx.lineTo(X(t), Y(v))));
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(233,235,242,0.42)';
+  ctx.textAlign = 'center';
+  for (let d = 0; d <= Math.ceil(lx); d++) {
+    const x = X(Math.pow(10, d));
+    if (x > m.l + pw + 2) break;
+    ctx.fillText(d === 0 ? '1' : '10' + (d === 1 ? '' : d), x, h - m.b + 14);
+  }
+  ctx.fillStyle = 'rgba(233,235,242,0.55)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Fs', m.l + 4, m.t + 2);
+  ctx.textAlign = 'right';
+  ctx.fillText('τ (LJ 时间)', m.l + pw - 4, h - m.b + 14);
+}
+
+/**
+ * 薄膜迁移率剖面：每层平均位移² 沿 z。自由表面层活动性高、中部低——
+ * 薄膜 Tg 下降的直接证据。两端色偏琥珀 = 自由表面。
+ */
+export function drawProfilePlot(canvas, prof) {
+  const g = prep(canvas);
+  if (!g) return;
+  const { ctx, w, h } = g;
+  const m = { l: 40, r: 12, t: 12, b: 26 };
+  const pw = w - m.l - m.r, ph = h - m.t - m.b;
+  const font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+
+  if (!prof || !prof.length) {
+    ctx.fillStyle = 'rgba(233,235,242,0.35)';
+    ctx.font = '11px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('样品面板切换到「薄膜」后出现', m.l + pw / 2, m.t + ph / 2);
+    return;
+  }
+  const nb = prof.length;
+  const maxV = Math.max(...prof) * 1.15 || 1;
+  const bw = pw / nb;
+  for (let b = 0; b < nb; b++) {
+    const v = Math.max(0, prof[b]);
+    const bh = Math.sqrt(v / maxV) * ph; // √ 标度
+    const surf = Math.abs(b + 0.5 - nb / 2) / (nb / 2);
+    const rr = 0.35 + 0.55 * surf * surf, gg = 0.6, bb = 0.95 - 0.5 * surf * surf;
+    ctx.fillStyle = `rgba(${(rr * 255) | 0},${(gg * 255) | 0},${(bb * 255) | 0},0.75)`;
+    ctx.fillRect(m.l + b * bw + 1, m.t + ph - bh, bw - 2, bh);
+  }
+  ctx.fillStyle = 'rgba(233,235,242,0.45)';
+  ctx.font = font;
+  ctx.textAlign = 'left';
+  ctx.fillText('⟨Δr²⟩层 · √标度', m.l + 4, m.t + 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('中面', m.l + pw / 2, h - m.b + 14);
+  ctx.fillStyle = 'rgba(232,163,61,0.8)';
+  ctx.textAlign = 'left';
+  ctx.fillText('自由面', m.l + 2, h - m.b + 14);
+  ctx.textAlign = 'right';
+  ctx.fillText('自由面', m.l + pw - 2, h - m.b + 14);
+}
+
+/**
+ * 力学响应图：单轴/循环为 σ–ε；orientPts 存在时叠加键取向 P2（右轴）
+ */
+export function drawStressPlot(canvas, pts, orientPts) {
   const g = prep(canvas);
   if (!g) return;
   const { ctx, w, h } = g;
@@ -425,11 +622,37 @@ export function drawStressPlot(canvas, pts) {
   pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(X(x), Y(y)) : ctx.lineTo(X(x), Y(y))));
   ctx.stroke();
 
+  // 键取向 P2 叠加（琥珀，右轴 0..0.5）——应力光学的双折射对应量
+  const hasP2 = orientPts && orientPts.length > 2;
+  if (hasP2) {
+    const Y2 = (v) => m.t + (1 - v / 0.5) * ph;
+    ctx.strokeStyle = 'rgba(232,163,61,0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    for (const [x, v] of orientPts) {
+      if (!isFinite(v)) continue;
+      const px = X(x), py = Y2(Math.max(0, Math.min(0.5, v)));
+      started ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      started = true;
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(232,163,61,0.75)';
+    ctx.textAlign = 'right';
+    ctx.fillText('0.5', m.l + pw + 9, m.t + 8);
+    ctx.fillText('0', m.l + pw + 9, m.t + ph);
+  }
+
   ctx.fillStyle = 'rgba(233,235,242,0.55)';
   ctx.font = '10px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.textAlign = 'left';
   ctx.fillText('偏应力', m.l + 4, m.t + 2);
+  if (hasP2) {
+    ctx.fillStyle = 'rgba(232,163,61,0.9)';
+    ctx.fillText('取向 P2', m.l + 48, m.t + 2);
+  }
   ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(233,235,242,0.55)';
   ctx.fillText('应变 ε', m.l + pw - 2, h - m.b + 16);
   ctx.textAlign = 'left';
   ctx.fillStyle = 'rgba(233,235,242,0.45)';

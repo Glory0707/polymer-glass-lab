@@ -32,6 +32,7 @@ export class GlassRenderer {
     this._fitCamera(sim);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.localClippingEnabled = true; // 切片视图
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
@@ -77,17 +78,38 @@ export class GlassRenderer {
     this.beadMesh = mesh;
     this.scene.add(mesh);
 
+    // 切片视图：z 向双裁剪平面夹出 3.2σ 厚的薄片（露出内部协同运动）
+    this.slice = { on: false, frac: 0.5, half: 1.6 };
+    this._clipPlanes = [
+      new THREE.Plane(new THREE.Vector3(0, 0, -1), 0),
+      new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
+    ];
+    mat.clippingPlanes = null;
+
     // 键线（含跨周期边界的镜像补画）：中性灰弱化存在感，让珠色独占数据表达
     const nb = sim.bondPairs.length / 2;
     this.bondPos = new Float32Array(nb * 6);
     const bgeo = new THREE.BufferGeometry();
     bgeo.setAttribute('position', new THREE.BufferAttribute(this.bondPos, 3));
+    const bmat = new THREE.LineBasicMaterial({ color: 0x52545a, transparent: true, opacity: 0.28 });
     this.bondLines = new THREE.LineSegments(
       bgeo,
-      new THREE.LineBasicMaterial({ color: 0x52545a, transparent: true, opacity: 0.28 })
+      bmat
     );
     this.bondLines.frustumCulled = false;
     this.scene.add(this.bondLines);
+
+    // 薄膜模式的两片自由表面（半透明琥珀面）
+    this.wallMeshes = [];
+    const wmat = new THREE.MeshBasicMaterial({
+      color: 0xe8a33d, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false,
+    });
+    for (let k = 0; k < 2; k++) {
+      const wm = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), wmat);
+      wm.visible = false;
+      this.scene.add(wm);
+      this.wallMeshes.push(wm);
+    }
 
     // 盒子参考框：只画 8 个角的取景括号——整根棱边在近距透视下会把远端
     // 投影得很大，看起来像从珠子块里辐射出去的长线
@@ -131,6 +153,23 @@ export class GlassRenderer {
     this._fill.position.set(c.x - Lmax, c.y - Lmax, c.z - 1.5 * Lmax);
   }
 
+  /** 切片视图开关与 z 位置（盒子高度的比例 0..1） */
+  setSlice(on, frac) {
+    if (frac != null) this.slice.frac = frac;
+    if (this.slice.on === on) return;
+    this.slice.on = on;
+    const planes = on ? this._clipPlanes : null;
+    this.beadMesh.material.clippingPlanes = planes;
+    this.beadMesh.material.needsUpdate = true;
+    this.bondLines.material.clippingPlanes = planes;
+    this.bondLines.material.needsUpdate = true;
+  }
+
+  /** 薄膜模式：显示两片自由表面 */
+  setFilm(on) {
+    for (const wm of this.wallMeshes) wm.visible = on;
+  }
+
   /** 每帧同步：位置矩阵、实例颜色、键线几何 */
   update(opts = {}) {
     const sim = this.sim;
@@ -150,18 +189,37 @@ export class GlassRenderer {
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 
+    // 切片平面跟随盒子当前尺寸
+    if (this.slice.on) {
+      const z0 = this.slice.frac * sim.Lz;
+      this._clipPlanes[0].constant = z0 + this.slice.half;
+      this._clipPlanes[1].constant = -(z0 - this.slice.half);
+    }
+
+    // 薄膜自由表面位置
+    if (this.wallMeshes[0].visible) {
+      const marg = 2.0;
+      for (let k = 0; k < 2; k++) {
+        const wm = this.wallMeshes[k];
+        const z = k === 0 ? marg : sim.Lz - marg;
+        wm.position.set(sim.Lx / 2, sim.Ly / 2, z);
+        wm.scale.set(sim.Lx, sim.Ly, 1);
+      }
+    }
+
     if (opts.showBonds) {
       const arr = this.bondPos;
       const bp = sim.bondPairs;
       const { Lx, Ly, Lz } = sim;
+      const film = !!sim.film;
       for (let b = 0, w = 0; b < bp.length; b += 2, w += 6) {
         const i3 = bp[b] * 3, j3 = bp[b + 1] * 3;
         arr[w] = p[i3]; arr[w + 1] = p[i3 + 1]; arr[w + 2] = p[i3 + 2];
         // 跨周期边界的键：端点 j 取其最近镜像（与力计算的最小镜像约定一致），
-        // 否则跨界键会被画成横跨整个盒子的长线
+        // 否则跨界键会被画成横跨整个盒子的长线。薄膜 z 向无周期，不镜像。
         arr[w + 3] = p[j3]     - Lx * Math.round((p[j3] - p[i3]) / Lx);
         arr[w + 4] = p[j3 + 1] - Ly * Math.round((p[j3 + 1] - p[i3 + 1]) / Ly);
-        arr[w + 5] = p[j3 + 2] - Lz * Math.round((p[j3 + 2] - p[i3 + 2]) / Lz);
+        arr[w + 5] = film ? p[j3 + 2] : p[j3 + 2] - Lz * Math.round((p[j3 + 2] - p[i3 + 2]) / Lz);
       }
       this.bondLines.geometry.attributes.position.needsUpdate = true;
       this.bondLines.visible = true;
